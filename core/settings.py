@@ -44,7 +44,6 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Para archivos estáticos en producción
     'corsheaders.middleware.CorsMiddleware',  # Debe ir temprano
@@ -212,4 +211,5 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
 CSRF_COOKIE_HTTPONLY = False  # Angular necesita leer el token
+
 
