@@ -158,13 +158,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.Usuario'
 
 # Configuración de Email (usando variables de entorno)
+#EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+#EMAIL_HOST = 'smtp.gmail.com'
+#EMAIL_PORT = 465
+#EMAIL_USE_SSL = True
+#EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='joadanvidal@gmail.com')
+#EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='pkpukuqtvxbqqkvf')
+#DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 465
-EMAIL_USE_SSL = True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='joadanvidal@gmail.com')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='pkpukuqtvxbqqkvf')
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+EMAIL_HOST = 'smtp.resend.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'resend'  # Literal "resend", no cambiar
+EMAIL_HOST_PASSWORD = config('RESEND_API_KEY')  # Tu API Key de Resend
+DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'  # Email por defecto de Resend (gratis)
 
 # Configuración CORS para Angular Frontend
 CORS_ALLOWED_ORIGINS = config(
@@ -211,5 +218,6 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
 CSRF_COOKIE_HTTPONLY = False  # Angular necesita leer el token
+
 
 
