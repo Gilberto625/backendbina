@@ -164,7 +164,8 @@ AUTH_USER_MODEL = 'accounts.Usuario'
 #EMAIL_USE_SSL = True
 #EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='joadanvidal@gmail.com')
 #EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='pkpukuqtvxbqqkvf')
-#DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+#DEFAULT_FROM_EMAIL = EMAIL_HOST_USER# Configuración de Email con Resend
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.resend.com'
 EMAIL_PORT = 587
@@ -218,6 +219,7 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
 CSRF_COOKIE_HTTPONLY = False  # Angular necesita leer el token
+
 
 
 
