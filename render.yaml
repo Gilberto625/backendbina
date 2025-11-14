@@ -15,6 +15,18 @@ services:
         fromDatabase:
           name: django-db
           property: connectionString
+      # Configuración de Email (Resend)
+      - key: RESEND_API_KEY
+        sync: false  # Debes agregarlo manualmente en Render Dashboard
+      # Configuración de CORS para el frontend en Vercel
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://frontbina.vercel.app,https://backendbina-1.onrender.com
+      # Configuración de CSRF para el frontend
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://frontbina.vercel.app,https://backendbina-1.onrender.com
+      # Configuración de Firebase (opcional si usas Google Login)
+      - key: FIREBASE_CREDENTIALS
+        sync: false  # Debes agregarlo manualmente si usas Google Login
 databases:
   - name: django-db
     databaseName: django_production

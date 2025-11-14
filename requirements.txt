@@ -18,3 +18,11 @@ whitenoise==6.6.0
 gunicorn==21.2.0
 
 resend==0.8.0
+
+# Autenticación de dos factores (TOTP)
+pyotp==2.9.0
+qrcode==7.4.2
+Pillow==10.2.0
+
+# Rate limiting y seguridad
+django-ratelimit==4.1.0
