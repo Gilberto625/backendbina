@@ -76,18 +76,40 @@ def register_user(request):
     usuario.save()
 
     # Enviar código OTP por email usando SendGrid
-    if enviar_otp_email(data['correo'], codigo_otp):
+    try:
+        email_enviado = enviar_otp_email(data['correo'], codigo_otp)
+        if email_enviado:
+            return JsonResponse({
+                'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
+                'requires2fa': True,
+                'canal': 'email',
+                'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken
+            }, status=201)
+        else:
+            # Si falla el envío, aún devolvemos éxito pero con advertencia
+            return JsonResponse({
+                'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
+                'requires2fa': True,
+                'canal': 'email',
+                'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                'tempToken': str(usuario.id),
+                'warning': 'El correo puede no haberse enviado. Verifica tu configuración de SendGrid.'
+            }, status=201)
+    except Exception as e:
+        # Si hay un error crítico, aún devolvemos el usuario creado
+        # pero registramos el error
+        import traceback
+        print(f"Error enviando email OTP: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
             'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
             'requires2fa': True,
             'canal': 'email',
             'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
-            'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken
+            'tempToken': str(usuario.id),
+            'warning': 'Error al enviar correo. Verifica tu configuración de SendGrid.'
         }, status=201)
-    else:
-        return JsonResponse({
-            'error': 'Usuario registrado, pero no se pudo enviar el correo de activación'
-        }, status=500)
 @csrf_exempt
 def verificar_registro_2fa(request):
     if request.method != 'POST':

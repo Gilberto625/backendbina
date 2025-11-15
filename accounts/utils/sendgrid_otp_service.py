@@ -23,6 +23,15 @@ def enviar_otp_email(correo: str, codigo_otp: str) -> bool:
     Returns:
         bool: True si se envió correctamente, False en caso contrario
     """
+    # Verificar que SendGrid esté configurado
+    if not settings.SENDGRID_API_KEY or settings.SENDGRID_API_KEY == '':
+        print("⚠️ SENDGRID_API_KEY no configurada. No se puede enviar email.")
+        return False
+    
+    if not settings.SENDGRID_FROM_EMAIL or settings.SENDGRID_FROM_EMAIL == '':
+        print("⚠️ SENDGRID_FROM_EMAIL no configurada. No se puede enviar email.")
+        return False
+    
     try:
         message = Mail(
             from_email=(settings.SENDGRID_FROM_EMAIL, settings.SENDGRID_FROM_NAME),
@@ -55,7 +64,9 @@ def enviar_otp_email(correo: str, codigo_otp: str) -> bool:
             return False
             
     except Exception as e:
+        import traceback
         print(f"❌ Error enviando correo OTP: {str(e)}")
+        print(traceback.format_exc())
         return False
 
 
@@ -70,6 +81,15 @@ def enviar_otp_recuperacion(correo: str, codigo_otp: str) -> bool:
     Returns:
         bool: True si se envió correctamente, False en caso contrario
     """
+    # Verificar que SendGrid esté configurado
+    if not settings.SENDGRID_API_KEY or settings.SENDGRID_API_KEY == '':
+        print("⚠️ SENDGRID_API_KEY no configurada. No se puede enviar email.")
+        return False
+    
+    if not settings.SENDGRID_FROM_EMAIL or settings.SENDGRID_FROM_EMAIL == '':
+        print("⚠️ SENDGRID_FROM_EMAIL no configurada. No se puede enviar email.")
+        return False
+    
     try:
         message = Mail(
             from_email=(settings.SENDGRID_FROM_EMAIL, settings.SENDGRID_FROM_NAME),
@@ -103,6 +123,8 @@ def enviar_otp_recuperacion(correo: str, codigo_otp: str) -> bool:
             return False
             
     except Exception as e:
+        import traceback
         print(f"❌ Error enviando correo de recuperación: {str(e)}")
+        print(traceback.format_exc())
         return False
 
