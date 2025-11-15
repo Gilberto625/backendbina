@@ -44,9 +44,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # ✅ Debe estar PRIMERO
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Para archivos estáticos en producción
-    'corsheaders.middleware.CorsMiddleware',  # Debe ir temprano
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -195,14 +195,25 @@ SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
 SENDGRID_FROM_EMAIL = config('SENDGRID_FROM_EMAIL', default='')
 SENDGRID_FROM_NAME = config('SENDGRID_FROM_NAME', default='modulo usuario')
 
-# Configuración CORS para Angular Frontend
+# Configuración CORS para Angular Frontend y Vercel
+# Obtener URL del frontend desde variables de entorno
+FRONTEND_URL = config('FRONTEND_URL', default='https://frontbina.vercel.app')
+
+# Lista de orígenes permitidos
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:4200,http://127.0.0.1:4200',
+    default='https://frontbina.vercel.app,http://localhost:4200,http://127.0.0.1:4200',
     cast=Csv()
 )
+
+# Permitir todos los subdominios de Vercel (para preview deployments)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",  # Permite cualquier subdominio de Vercel
+]
+
 CORS_ALLOW_CREDENTIALS = True  # Para permitir cookies/sesiones
-# Headers adicionales de CORS
+
+# Headers permitidos
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -214,6 +225,8 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Métodos permitidos
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',
@@ -222,10 +235,10 @@ CORS_ALLOW_METHODS = [
     'POST',
     'PUT',
 ]
-# CSRF Settings para Angular
+# CSRF Settings para Angular y Vercel
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='http://localhost:4200,http://127.0.0.1:4200',
+    default='https://frontbina.vercel.app,http://localhost:4200,http://127.0.0.1:4200',
     cast=Csv()
 )
 
