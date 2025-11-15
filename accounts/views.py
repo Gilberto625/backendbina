@@ -63,6 +63,7 @@ def register_user(request):
             pregunta_secreta=data['preguntasecreta'],
             respuesta_secreta=data['respuestasecreta'],
             verificado=False,
+            totp_enabled=False,  # Inicializar campo requerido
         )
         usuario.set_password(data['contrasena'])
         usuario.save()

@@ -12,6 +12,7 @@ class Usuario(AbstractUser):
     codigo_otp = models.CharField(max_length=6, null=True, blank=True)
     otp_expira = models.DateTimeField(null=True, blank=True)
     confirmado = models.BooleanField(default=False)
+    totp_enabled = models.BooleanField(default=False)  # Campo existente en BD
 
     def __str__(self):
         return self.email
