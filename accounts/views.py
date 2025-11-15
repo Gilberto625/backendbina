@@ -237,27 +237,42 @@ def login_user(request):
 @csrf_exempt
 def verificar_login_2fa(request):
     if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
 
     try:
         data = json.loads(request.body)
         temp_token = data.get('tempToken')
         codigo = data.get('codigo')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
 
     if not temp_token or not codigo:
-        return JsonResponse({'error': 'tempToken y codigo son requeridos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'tempToken y codigo son requeridos'
+        }, status=400)
 
     # Obtener datos de la sesión
     session_data = request.session.get(temp_token)
     if not session_data:
-        return JsonResponse({'error': 'Sesión 2FA inválida'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Sesión 2FA inválida'
+        }, status=400)
 
     # Verificar expiración (5 minutos)
     if datetime.datetime.now().timestamp() > session_data.get('expira', 0):
         del request.session[temp_token]
-        return JsonResponse({'error': 'Código expirado. Solicita uno nuevo'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Código expirado. Solicita uno nuevo'
+        }, status=400)
 
     # Verificar código
     if session_data['codigo'] != str(codigo):
@@ -266,28 +281,42 @@ def verificar_login_2fa(request):
 
         if session_data['intentos'] >= 5:
             del request.session[temp_token]
-            return JsonResponse({'error': 'Demasiados intentos'}, status=429)
+            return JsonResponse({
+                'ok': False,
+                'error': 'Demasiados intentos'
+            }, status=429)
 
-        return JsonResponse({'error': 'Código incorrecto'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Código incorrecto'
+        }, status=400)
 
     # Código correcto: obtener usuario
     try:
         usuario = Usuario.objects.get(email=session_data['email'])
     except Usuario.DoesNotExist:
-        return JsonResponse({'error': 'Usuario no encontrado'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Usuario no encontrado'
+        }, status=400)
 
-    # Limpiar sesión
+    # Establecer sesión de autenticación
+    request.session['user_id'] = usuario.id
+    request.session['authenticated'] = True
+    request.session['email'] = usuario.email
+    
+    # Limpiar sesión temporal 2FA
     del request.session[temp_token]
 
-    # Aquí generarías un JWT en el futuro
+    # Retornar respuesta con usuario (estructura requerida por frontend)
     return JsonResponse({
         'ok': True,
-        'mensaje': 'Inicio de sesión exitoso',
         'usuario': {
             'id': usuario.id,
             'email': usuario.email,
             'username': usuario.username,
-        }
+        },
+        'message': 'Login exitoso'
     })
 @csrf_exempt
 def google_login(request):
