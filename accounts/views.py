@@ -37,79 +37,91 @@ def register_user(request):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'JSON inválido'}, status=400)
 
-    # Validar campos requeridos
-    campos = ['nombre', 'apellidopaterno', 'apellidomaterno', 'username',
-              'correo', 'contrasena', 'telefono', 'preguntasecreta', 'respuestasecreta']
-    for c in campos:
-        if not data.get(c):
-            return JsonResponse({'error': f'El campo {c} es obligatorio'}, status=400)
-
-    # Verificar unicidad
-    if Usuario.objects.filter(username=data['username']).exists():
-        return JsonResponse({'error': 'El nombre de usuario ya está en uso'}, status=400)
-    if Usuario.objects.filter(email=data['correo']).exists():
-        return JsonResponse({'error': 'El correo ya está registrado'}, status=400)
-    if Usuario.objects.filter(telefono=data['telefono']).exists():
-        return JsonResponse({'error': 'El teléfono ya está registrado'}, status=400)
-
-    # Crear usuario
-    usuario = Usuario(
-        username=data['username'],
-        email=data['correo'],
-        first_name=data['nombre'],
-        last_name=data['apellidopaterno'],
-        telefono=data['telefono'],
-        pregunta_secreta=data['preguntasecreta'],
-        respuesta_secreta=data['respuestasecreta'],
-        verificado=False,
-    )
-    usuario.set_password(data['contrasena'])
-    usuario.save()
-
-    # Generar código OTP con SendGrid
-    codigo_otp = generar_codigo_otp()
-    otp_expira = timezone.now() + timedelta(minutes=10)
-    
-    # Guardar código OTP en el usuario
-    usuario.codigo_otp = codigo_otp
-    usuario.otp_expira = otp_expira
-    usuario.save()
-
-    # Enviar código OTP por email usando SendGrid
     try:
-        email_enviado = enviar_otp_email(data['correo'], codigo_otp)
-        if email_enviado:
-            return JsonResponse({
-                'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
-                'requires2fa': True,
-                'canal': 'email',
-                'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
-                'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken
-            }, status=201)
-        else:
-            # Si falla el envío, aún devolvemos éxito pero con advertencia
+        # Validar campos requeridos
+        campos = ['nombre', 'apellidopaterno', 'apellidomaterno', 'username',
+                  'correo', 'contrasena', 'telefono', 'preguntasecreta', 'respuestasecreta']
+        for c in campos:
+            if not data.get(c):
+                return JsonResponse({'error': f'El campo {c} es obligatorio'}, status=400)
+
+        # Verificar unicidad
+        if Usuario.objects.filter(username=data['username']).exists():
+            return JsonResponse({'error': 'El nombre de usuario ya está en uso'}, status=400)
+        if Usuario.objects.filter(email=data['correo']).exists():
+            return JsonResponse({'error': 'El correo ya está registrado'}, status=400)
+        if Usuario.objects.filter(telefono=data['telefono']).exists():
+            return JsonResponse({'error': 'El teléfono ya está registrado'}, status=400)
+
+        # Crear usuario
+        usuario = Usuario(
+            username=data['username'],
+            email=data['correo'],
+            first_name=data['nombre'],
+            last_name=data['apellidopaterno'],
+            telefono=data['telefono'],
+            pregunta_secreta=data['preguntasecreta'],
+            respuesta_secreta=data['respuestasecreta'],
+            verificado=False,
+        )
+        usuario.set_password(data['contrasena'])
+        usuario.save()
+
+        # Generar código OTP con SendGrid
+        codigo_otp = generar_codigo_otp()
+        otp_expira = timezone.now() + timedelta(minutes=10)
+        
+        # Guardar código OTP en el usuario
+        usuario.codigo_otp = codigo_otp
+        usuario.otp_expira = otp_expira
+        usuario.save()
+
+        # Enviar código OTP por email usando SendGrid
+        try:
+            email_enviado = enviar_otp_email(data['correo'], codigo_otp)
+            if email_enviado:
+                return JsonResponse({
+                    'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
+                    'requires2fa': True,
+                    'canal': 'email',
+                    'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                    'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken
+                }, status=201)
+            else:
+                # Si falla el envío, aún devolvemos éxito pero con advertencia
+                return JsonResponse({
+                    'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
+                    'requires2fa': True,
+                    'canal': 'email',
+                    'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                    'tempToken': str(usuario.id),
+                    'warning': 'El correo puede no haberse enviado. Verifica tu configuración de SendGrid.'
+                }, status=201)
+        except Exception as e:
+            # Si hay un error crítico, aún devolvemos el usuario creado
+            # pero registramos el error
+            import traceback
+            print(f"Error enviando email OTP: {str(e)}")
+            print(traceback.format_exc())
             return JsonResponse({
                 'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                 'requires2fa': True,
                 'canal': 'email',
                 'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
                 'tempToken': str(usuario.id),
-                'warning': 'El correo puede no haberse enviado. Verifica tu configuración de SendGrid.'
+                'warning': 'Error al enviar correo. Verifica tu configuración de SendGrid.'
             }, status=201)
+            
     except Exception as e:
-        # Si hay un error crítico, aún devolvemos el usuario creado
-        # pero registramos el error
+        # Capturar cualquier otro error
         import traceback
-        print(f"Error enviando email OTP: {str(e)}")
-        print(traceback.format_exc())
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        print(f"Error en register_user: {error_msg}")
+        print(error_trace)
         return JsonResponse({
-            'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
-            'requires2fa': True,
-            'canal': 'email',
-            'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
-            'tempToken': str(usuario.id),
-            'warning': 'Error al enviar correo. Verifica tu configuración de SendGrid.'
-        }, status=201)
+            'error': f'Error al registrar usuario: {error_msg}'
+        }, status=500)
 @csrf_exempt
 def verificar_registro_2fa(request):
     if request.method != 'POST':
