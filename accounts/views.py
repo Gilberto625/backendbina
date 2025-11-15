@@ -125,52 +125,146 @@ def register_user(request):
         }, status=500)
 @csrf_exempt
 def verificar_registro_2fa(request):
+    """
+    Verifica el código 2FA del registro (compatibilidad con sistema anterior)
+    Ahora también soporta verificación con OTP desde el modelo Usuario
+    """
     if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
 
     try:
         data = json.loads(request.body)
         temp_token = data.get('tempToken')
         codigo = data.get('codigo')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
 
     if not temp_token or not codigo:
-        return JsonResponse({'error': 'tempToken y codigo son requeridos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'tempToken y codigo son requeridos'
+        }, status=400)
 
-    # Obtener datos de la sesión
-    session_data = request.session.get(temp_token)
-    if not session_data:
-        return JsonResponse({'error': 'Sesión 2FA inválida'}, status=400)
-
-    # Verificar expiración (5 minutos)
-    if datetime.datetime.now().timestamp() > session_data.get('expira', 0):
-        del request.session[temp_token]
-        return JsonResponse({'error': 'Código expirado. Solicita uno nuevo'}, status=400)
-
-    # Verificar código
-    if session_data['codigo'] != str(codigo):
-        session_data['intentos'] = session_data.get('intentos', 0) + 1
-        request.session[temp_token] = session_data  # Guardar intentos
-
-        if session_data['intentos'] >= 5:
-            del request.session[temp_token]
-            return JsonResponse({'error': 'Demasiados intentos'}, status=429)
-
-        return JsonResponse({'error': 'Código incorrecto'}, status=400)
-
-    # Código correcto: marcar usuario como verificado
     try:
-        usuario = Usuario.objects.get(email=session_data['email'])
-        usuario.verificado = True
-        usuario.save()
+        # Intentar obtener usuario por ID (nuevo sistema con OTP en modelo)
+        try:
+            usuario = Usuario.objects.get(id=temp_token)
+            
+            # Verificar si el código ha expirado (10 minutos)
+            if usuario.otp_expira and usuario.otp_expira < timezone.now():
+                usuario.codigo_otp = None
+                usuario.otp_expira = None
+                usuario.save()
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Código expirado. Solicita uno nuevo.'
+                }, status=400)
+            
+            # Verificar código OTP
+            if not usuario.codigo_otp or usuario.codigo_otp != str(codigo):
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Código incorrecto'
+                }, status=400)
+            
+            # Activar cuenta
+            usuario.confirmado = True
+            usuario.verificado = True
+            usuario.codigo_otp = None
+            usuario.otp_expira = None
+            usuario.save()
+            
+            # Establecer sesión
+            request.session['user_id'] = usuario.id
+            request.session['authenticated'] = True
+            request.session['email'] = usuario.email
+            
+            return JsonResponse({
+                'ok': True,
+                'usuario': {
+                    'id': usuario.id,
+                    'email': usuario.email,
+                    'username': usuario.username,
+                },
+                'message': 'Verificación exitosa'
+            })
+            
+        except (Usuario.DoesNotExist, ValueError):
+            # Fallback: sistema anterior con sesiones
+            session_data = request.session.get(temp_token)
+            if not session_data:
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Sesión 2FA inválida'
+                }, status=400)
+
+            # Verificar expiración (5 minutos)
+            if datetime.datetime.now().timestamp() > session_data.get('expira', 0):
+                del request.session[temp_token]
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Código expirado. Solicita uno nuevo'
+                }, status=400)
+
+            # Verificar código
+            if session_data['codigo'] != str(codigo):
+                session_data['intentos'] = session_data.get('intentos', 0) + 1
+                request.session[temp_token] = session_data
+
+                if session_data['intentos'] >= 5:
+                    del request.session[temp_token]
+                    return JsonResponse({
+                        'ok': False,
+                        'error': 'Demasiados intentos'
+                    }, status=429)
+
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Código incorrecto'
+                }, status=400)
+
+            # Código correcto: marcar usuario como verificado
+            usuario = Usuario.objects.get(email=session_data['email'])
+            usuario.verificado = True
+            usuario.save()
+            
+            # Establecer sesión
+            request.session['user_id'] = usuario.id
+            request.session['authenticated'] = True
+            request.session['email'] = usuario.email
+
+            # Limpiar sesión temporal
+            del request.session[temp_token]
+
+            return JsonResponse({
+                'ok': True,
+                'usuario': {
+                    'id': usuario.id,
+                    'email': usuario.email,
+                    'username': usuario.username,
+                },
+                'message': 'Verificación exitosa'
+            })
+            
     except Usuario.DoesNotExist:
-        return JsonResponse({'error': 'Usuario no encontrado'}, status=400)
-
-    # Limpiar sesión
-    del request.session[temp_token]
-
-    return JsonResponse({'ok': True, 'mensaje': 'Verificación exitosa'})
+        return JsonResponse({
+            'ok': False,
+            'error': 'Usuario no encontrado'
+        }, status=400)
+    except Exception as e:
+        import traceback
+        print(f"Error en verificar_registro_2fa: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'ok': False,
+            'error': f'Error al verificar código: {str(e)}'
+        }, status=500)
 @csrf_exempt
 def login_user(request):
     if request.method != 'POST':
@@ -344,16 +438,25 @@ def verificar_login_2fa(request):
 @csrf_exempt
 def google_login(request):
     if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
 
     try:
         data = json.loads(request.body)
         id_token = data.get('idToken')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
 
     if not id_token:
-        return JsonResponse({'error': 'idToken es requerido'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'idToken es requerido'
+        }, status=400)
 
     try:
         decoded_token = firebase_auth.verify_id_token(id_token)
@@ -368,17 +471,23 @@ def google_login(request):
                 'first_name': name.split(' ')[0] if name else '',
                 'last_name': name.split(' ')[1] if len(name.split(' ')) > 1 else '',
                 'verificado': True,  # Google ya verifica el email
+                'totp_enabled': False,
             }
         )
 
+        # Establecer sesión de autenticación
+        request.session['user_id'] = usuario.id
+        request.session['authenticated'] = True
+        request.session['email'] = usuario.email
+
         return JsonResponse({
             'ok': True,
-            'mensaje': 'Inicio de sesión con Google exitoso',
             'usuario': {
                 'id': usuario.id,
                 'email': usuario.email,
                 'username': usuario.username,
-            }
+            },
+            'message': 'Inicio de sesión con Google exitoso'
         })
 
     except Exception as e:
@@ -391,11 +500,17 @@ def google_login(request):
         print("Traceback completo:")
         traceback.print_exc()
         print("=" * 80)
-        return JsonResponse({'error': f'Token de Google inválido: {str(e)}'}, status=401)
+        return JsonResponse({
+            'ok': False,
+            'error': f'Token de Google inválido: {str(e)}'
+        }, status=401)
 @csrf_exempt
 def recuperar_contrasena(request):
     if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
 
     try:
         data = json.loads(request.body)
@@ -403,22 +518,37 @@ def recuperar_contrasena(request):
         pregunta_secreta = data.get('preguntaSecreta')
         respuesta_secreta = data.get('respuestaSecreta')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
 
     if not email or not pregunta_secreta or not respuesta_secreta:
-        return JsonResponse({'error': 'Todos los campos son requeridos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Todos los campos son requeridos'
+        }, status=400)
 
     try:
         usuario = Usuario.objects.get(email=email)
     except Usuario.DoesNotExist:
-        return JsonResponse({'error': 'Usuario no encontrado'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Usuario no encontrado'
+        }, status=400)
 
     if usuario.pregunta_secreta != pregunta_secreta:
-        return JsonResponse({'error': 'Pregunta secreta incorrecta'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Pregunta secreta incorrecta'
+        }, status=400)
 
     # Corregido: comparar respuesta secreta directamente (no está hasheada)
     if usuario.respuesta_secreta != respuesta_secreta:
-        return JsonResponse({'error': 'Respuesta secreta incorrecta'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Respuesta secreta incorrecta'
+        }, status=400)
 
     # Generar token temporal
     temp_token = str(uuid.uuid4())
@@ -431,38 +561,59 @@ def recuperar_contrasena(request):
 @csrf_exempt
 def restablecer_contrasena(request):
     if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
 
     try:
         data = json.loads(request.body)
         temp_token = data.get('tempToken')
         nueva_contrasena = data.get('nuevaContrasena')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
 
     if not temp_token or not nueva_contrasena:
-        return JsonResponse({'error': 'tempToken y nuevaContrasena son requeridos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'tempToken y nuevaContrasena son requeridos'
+        }, status=400)
 
     session_data = request.session.get(temp_token)
     if not session_data:
-        return JsonResponse({'error': 'Token inválido o expirado'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Token inválido o expirado'
+        }, status=400)
 
     # Verificar expiración (10 minutos)
     if datetime.datetime.now().timestamp() > session_data['expira']:
         del request.session[temp_token]
-        return JsonResponse({'error': 'Token expirado'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Token expirado'
+        }, status=400)
 
     try:
         usuario = Usuario.objects.get(email=session_data['email'])
         usuario.set_password(nueva_contrasena)
         usuario.save()
     except Usuario.DoesNotExist:
-        return JsonResponse({'error': 'Usuario no encontrado'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Usuario no encontrado'
+        }, status=400)
 
     # Limpiar sesión
     del request.session[temp_token]
 
-    return JsonResponse({'ok': True, 'mensaje': 'Contraseña actualizada con éxito'})
+    return JsonResponse({
+        'ok': True,
+        'message': 'Contraseña actualizada con éxito'
+    })
 
 
 # ========== VISTAS OTP CON SENDGRID ==========
@@ -486,6 +637,7 @@ def verificar_otp_registro(request):
         
         if not temp_token or not codigo:
             return JsonResponse({
+                'ok': False,
                 'error': 'tempToken y codigo son requeridos'
             }, status=400)
         
@@ -495,6 +647,7 @@ def verificar_otp_registro(request):
             usuario = Usuario.objects.get(id=temp_token)
         except (Usuario.DoesNotExist, ValueError):
             return JsonResponse({
+                'ok': False,
                 'error': 'Usuario no encontrado'
             }, status=404)
         
@@ -504,12 +657,14 @@ def verificar_otp_registro(request):
             usuario.otp_expira = None
             usuario.save()
             return JsonResponse({
+                'ok': False,
                 'error': 'Código expirado. Solicita uno nuevo.'
             }, status=400)
         
         # Verificar código
         if not usuario.codigo_otp or usuario.codigo_otp != codigo:
             return JsonResponse({
+                'ok': False,
                 'error': 'Código incorrecto'
             }, status=400)
         
@@ -520,13 +675,27 @@ def verificar_otp_registro(request):
         usuario.otp_expira = None
         usuario.save()
         
+        # Establecer sesión
+        request.session['user_id'] = usuario.id
+        request.session['authenticated'] = True
+        request.session['email'] = usuario.email
+        
         return JsonResponse({
             'ok': True,
+            'usuario': {
+                'id': usuario.id,
+                'email': usuario.email,
+                'username': usuario.username,
+            },
             'message': 'Cuenta activada correctamente'
         }, status=200)
         
     except Exception as e:
+        import traceback
+        print(f"Error en verificar_otp_registro: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
+            'ok': False,
             'error': f'Error al verificar código: {str(e)}'
         }, status=500)
 
@@ -548,6 +717,7 @@ def reenviar_otp(request):
         
         if not correo:
             return JsonResponse({
+                'ok': False,
                 'error': 'Correo es requerido'
             }, status=400)
         
@@ -555,6 +725,7 @@ def reenviar_otp(request):
             usuario = Usuario.objects.get(email=correo)
         except Usuario.DoesNotExist:
             return JsonResponse({
+                'ok': False,
                 'error': 'Usuario no encontrado'
             }, status=404)
         
@@ -567,15 +738,21 @@ def reenviar_otp(request):
         # Enviar nuevo código
         if enviar_otp_email(correo, nuevo_codigo):
             return JsonResponse({
+                'ok': True,
                 'message': 'Nuevo código enviado a tu correo. Expira en 10 minutos.'
             }, status=200)
         else:
             return JsonResponse({
+                'ok': False,
                 'error': 'No se pudo enviar el código'
             }, status=500)
             
     except Exception as e:
+        import traceback
+        print(f"Error en reenviar_otp: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
+            'ok': False,
             'error': f'Error al reenviar código: {str(e)}'
         }, status=500)
 
@@ -597,6 +774,7 @@ def solicitar_recuperacion_otp(request):
         
         if not correo:
             return JsonResponse({
+                'ok': False,
                 'error': 'Email es requerido'
             }, status=400)
         
@@ -605,6 +783,7 @@ def solicitar_recuperacion_otp(request):
         except Usuario.DoesNotExist:
             # Por seguridad, no revelar si el usuario existe o no
             return JsonResponse({
+                'ok': True,
                 'message': 'Si el correo existe, se enviará un código de recuperación.'
             }, status=200)
         
@@ -617,16 +796,22 @@ def solicitar_recuperacion_otp(request):
         # Enviar código por email
         if enviar_otp_recuperacion(correo, codigo_otp):
             return JsonResponse({
+                'ok': True,
                 'message': 'Código de recuperación enviado a tu correo. Expira en 10 minutos.',
                 'tempToken': str(usuario.id)  # O genera un token temporal más seguro
             }, status=200)
         else:
             return JsonResponse({
+                'ok': False,
                 'error': 'No se pudo enviar el código de recuperación'
             }, status=500)
             
     except Exception as e:
+        import traceback
+        print(f"Error en solicitar_recuperacion_otp: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
+            'ok': False,
             'error': f'Error al procesar solicitud: {str(e)}'
         }, status=500)
 
@@ -650,6 +835,7 @@ def verificar_otp_recuperacion(request):
         
         if not temp_token or not codigo:
             return JsonResponse({
+                'ok': False,
                 'error': 'tempToken y codigo son requeridos'
             }, status=400)
         
@@ -657,6 +843,7 @@ def verificar_otp_recuperacion(request):
             usuario = Usuario.objects.get(id=temp_token)
         except (Usuario.DoesNotExist, ValueError):
             return JsonResponse({
+                'ok': False,
                 'error': 'Usuario no encontrado'
             }, status=404)
         
@@ -666,12 +853,14 @@ def verificar_otp_recuperacion(request):
             usuario.otp_expira = None
             usuario.save()
             return JsonResponse({
+                'ok': False,
                 'error': 'Código expirado. Solicita uno nuevo.'
             }, status=400)
         
         # Verificar código
         if not usuario.codigo_otp or usuario.codigo_otp != codigo:
             return JsonResponse({
+                'ok': False,
                 'error': 'Código incorrecto'
             }, status=400)
         
@@ -682,7 +871,11 @@ def verificar_otp_recuperacion(request):
         }, status=200)
         
     except Exception as e:
+        import traceback
+        print(f"Error en verificar_otp_recuperacion: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
+            'ok': False,
             'error': f'Error al verificar código: {str(e)}'
         }, status=500)
 
@@ -704,6 +897,7 @@ def reenviar_otp_recuperacion(request):
         
         if not correo:
             return JsonResponse({
+                'ok': False,
                 'error': 'Correo es requerido'
             }, status=400)
         
@@ -711,6 +905,7 @@ def reenviar_otp_recuperacion(request):
             usuario = Usuario.objects.get(email=correo)
         except Usuario.DoesNotExist:
             return JsonResponse({
+                'ok': False,
                 'error': 'Usuario no encontrado'
             }, status=404)
         
@@ -723,15 +918,21 @@ def reenviar_otp_recuperacion(request):
         # Enviar nuevo código
         if enviar_otp_recuperacion(correo, nuevo_codigo):
             return JsonResponse({
+                'ok': True,
                 'message': 'Nuevo código enviado a tu correo. Expira en 10 minutos.'
             }, status=200)
         else:
             return JsonResponse({
+                'ok': False,
                 'error': 'No se pudo enviar el código'
             }, status=500)
             
     except Exception as e:
+        import traceback
+        print(f"Error en reenviar_otp_recuperacion: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
+            'ok': False,
             'error': f'Error al reenviar código: {str(e)}'
         }, status=500)
 
@@ -755,11 +956,13 @@ def actualizar_contrasena_otp(request):
         
         if not temp_token or not nueva_contrasena:
             return JsonResponse({
+                'ok': False,
                 'error': 'tempToken y nuevaContrasena son requeridos'
             }, status=400)
         
         if len(nueva_contrasena) < 8:
             return JsonResponse({
+                'ok': False,
                 'error': 'La contraseña debe tener al menos 8 caracteres'
             }, status=400)
         
@@ -767,12 +970,14 @@ def actualizar_contrasena_otp(request):
             usuario = Usuario.objects.get(id=temp_token)
         except (Usuario.DoesNotExist, ValueError):
             return JsonResponse({
+                'ok': False,
                 'error': 'Usuario no encontrado'
             }, status=404)
         
         # Verificar que el código OTP aún sea válido
         if not usuario.codigo_otp or not usuario.otp_expira or usuario.otp_expira < timezone.now():
             return JsonResponse({
+                'ok': False,
                 'error': 'Sesión expirada. Solicita un nuevo código.'
             }, status=400)
         
@@ -783,10 +988,15 @@ def actualizar_contrasena_otp(request):
         usuario.save()
         
         return JsonResponse({
+            'ok': True,
             'message': 'Contraseña actualizada correctamente'
         }, status=200)
         
     except Exception as e:
+        import traceback
+        print(f"Error en actualizar_contrasena_otp: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
+            'ok': False,
             'error': f'Error al actualizar contraseña: {str(e)}'
         }, status=500)
