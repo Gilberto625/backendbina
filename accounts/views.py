@@ -174,26 +174,41 @@ def verificar_registro_2fa(request):
 @csrf_exempt
 def login_user(request):
     if request.method != 'POST':
-        return JsonResponse({'error': 'Método no permitido'}, status=405)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
 
     try:
         data = json.loads(request.body)
         email = data.get('email')
         password = data.get('password')
     except (json.JSONDecodeError, KeyError):
-        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
 
     if not email or not password:
-        return JsonResponse({'error': 'Email y contraseña son requeridos'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Email y contraseña son requeridos'
+        }, status=400)
 
     # Autenticar usuario
     try:
         usuario = Usuario.objects.get(email=email)
     except Usuario.DoesNotExist:
-        return JsonResponse({'error': 'Credenciales inválidas'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Credenciales incorrectas'
+        }, status=401)
 
     if not usuario.check_password(password):
-        return JsonResponse({'error': 'Credenciales inválidas'}, status=400)
+        return JsonResponse({
+            'ok': False,
+            'error': 'Credenciales incorrectas'
+        }, status=401)
 
     # Si el usuario está verificado, requiere 2FA
     if usuario.verificado:
@@ -215,24 +230,32 @@ def login_user(request):
                 fail_silently=False,
             )
         except Exception:
-            return JsonResponse({'error': 'No se pudo enviar el correo'}, status=500)
+            return JsonResponse({
+                'ok': False,
+                'error': 'No se pudo enviar el correo'
+            }, status=500)
 
         return JsonResponse({
             'requires2fa': True,
             'tempToken': temp_token,
-            'canal': 'email',
-            'destino': f"{email[:2]}***@{email.split('@')[1]}",
+            'destino': usuario.email,
+            'metodos_disponibles': ['email']
         })
 
-    # Si no está verificado, genera JWT (más adelante lo haremos)
+    # Si no está verificado, login directo sin 2FA
+    # Establecer sesión de autenticación
+    request.session['user_id'] = usuario.id
+    request.session['authenticated'] = True
+    request.session['email'] = usuario.email
+    
     return JsonResponse({
         'ok': True,
-        'mensaje': 'Inicio de sesión exitoso',
         'usuario': {
             'id': usuario.id,
             'email': usuario.email,
             'username': usuario.username,
-        }
+        },
+        'message': 'Login exitoso'
     })
 @csrf_exempt
 def verificar_login_2fa(request):
