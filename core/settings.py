@@ -27,7 +27,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-p&f859sfsdb#et935ty(d
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,frontbina.vercel.app', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,backendbina-1.onrender.com', cast=Csv())
 
 
 # Application definition
@@ -199,7 +199,7 @@ SENDGRID_FROM_NAME = config('SENDGRID_FROM_NAME', default='modulo usuario')
 # Obtener URL del frontend desde variables de entorno
 FRONTEND_URL = config('FRONTEND_URL', default='https://frontbina.vercel.app')
 
-# Lista de orígenes permitidos
+# Lista de orígenes permitidos (orígenes específicos)
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='https://frontbina.vercel.app,http://localhost:4200,http://127.0.0.1:4200',
@@ -207,11 +207,19 @@ CORS_ALLOWED_ORIGINS = config(
 )
 
 # Permitir todos los subdominios de Vercel (para preview deployments)
+# IMPORTANTE: El regex debe ser una lista de strings (patrones regex)
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",  # Permite cualquier subdominio de Vercel
 ]
 
+# Si el regex no funciona en producción, usar esta opción temporalmente
+# CORS_ALLOW_ALL_ORIGINS = True  # Solo para debug - NO usar en producción
+# En su lugar, asegurarse de que el regex funcione correctamente
+
 CORS_ALLOW_CREDENTIALS = True  # Para permitir cookies/sesiones
+
+# Configuración adicional para asegurar que CORS funcione
+CORS_PREFLIGHT_MAX_AGE = 86400  # Cache preflight requests por 24 horas
 
 # Headers permitidos
 CORS_ALLOW_HEADERS = [
