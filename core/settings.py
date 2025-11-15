@@ -212,9 +212,21 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",  # Permite cualquier subdominio de Vercel
 ]
 
-# Si el regex no funciona en producción, usar esta opción temporalmente
-# CORS_ALLOW_ALL_ORIGINS = True  # Solo para debug - NO usar en producción
-# En su lugar, asegurarse de que el regex funcione correctamente
+# Función personalizada para verificar orígenes (fallback si regex no funciona)
+def cors_allow_origin(origin, request):
+    """Función personalizada para permitir orígenes de Vercel"""
+    if origin:
+        # Permitir cualquier subdominio de vercel.app
+        if origin.endswith('.vercel.app'):
+            return True
+        # Permitir localhost para desarrollo
+        if origin.startswith('http://localhost:') or origin.startswith('http://127.0.0.1:'):
+            return True
+    return None  # Dejar que django-cors-headers maneje el resto con CORS_ALLOWED_ORIGINS
+
+# Usar función personalizada como fallback si el regex no funciona
+# Esta función tiene prioridad sobre CORS_ALLOWED_ORIGINS y CORS_ALLOWED_ORIGIN_REGEXES
+CORS_ALLOW_ORIGIN_FUNC = cors_allow_origin
 
 CORS_ALLOW_CREDENTIALS = True  # Para permitir cookies/sesiones
 
