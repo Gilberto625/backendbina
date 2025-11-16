@@ -77,6 +77,7 @@ def register_user(request):
             email_enviado = enviar_otp_email(data['correo'], codigo_otp)
             if email_enviado:
                 return JsonResponse({
+                    'ok': True,
                     'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                     'requires2fa': True,
                     'canal': 'email',
@@ -86,6 +87,7 @@ def register_user(request):
             else:
                 # Si falla el envío, aún devolvemos éxito pero con advertencia
                 return JsonResponse({
+                    'ok': True,
                     'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                     'requires2fa': True,
                     'canal': 'email',
@@ -100,6 +102,7 @@ def register_user(request):
             print(f"Error enviando email OTP: {str(e)}")
             print(traceback.format_exc())
             return JsonResponse({
+                'ok': True,
                 'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                 'requires2fa': True,
                 'canal': 'email',
