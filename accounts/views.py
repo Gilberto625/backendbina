@@ -1,9 +1,7 @@
 # accounts/views.py
 from firebase_admin import auth as firebase_auth
 import uuid
-import random
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
@@ -16,9 +14,6 @@ import json
 import datetime
 from .utils.sendgrid_otp_service import generar_codigo_otp, enviar_otp_email, enviar_otp_recuperacion
 Usuario = get_user_model()
-
-def generar_codigo():
-    return str(random.randint(100000, 999999))
 
 @ensure_csrf_cookie
 def get_csrf_token(request):
@@ -306,33 +301,37 @@ def login_user(request):
 
     # Si el usuario está verificado, requiere 2FA
     if usuario.verificado:
-        codigo = generar_codigo()
-        temp_token = str(uuid.uuid4())
-        request.session[temp_token] = {
-            'email': usuario.email,
-            'codigo': codigo,
-            'intentos': 0,
-            'expira': (datetime.datetime.now() + datetime.timedelta(minutes=5)).timestamp()
-        }
+        # Generar código OTP con SendGrid (consistente con registro)
+        codigo_otp = generar_codigo_otp()
+        otp_expira = timezone.now() + timedelta(minutes=10)
+        
+        # Guardar código OTP en el usuario
+        usuario.codigo_otp = codigo_otp
+        usuario.otp_expira = otp_expira
+        usuario.save()
 
+        # Enviar código OTP por email usando SendGrid
         try:
-            send_mail(
-                'Código de verificación',
-                f'Tu código es: {codigo}. Expira en 5 minutos.',
-                settings.DEFAULT_FROM_EMAIL,
-                [usuario.email],
-                fail_silently=False,
-            )
-        except Exception:
+            email_enviado = enviar_otp_email(usuario.email, codigo_otp)
+            if not email_enviado:
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'No se pudo enviar el correo de verificación'
+                }, status=500)
+        except Exception as e:
+            import traceback
+            print(f"Error enviando email OTP en login: {str(e)}")
+            print(traceback.format_exc())
             return JsonResponse({
                 'ok': False,
-                'error': 'No se pudo enviar el correo'
+                'error': 'No se pudo enviar el correo de verificación'
             }, status=500)
 
         return JsonResponse({
             'requires2fa': True,
-            'tempToken': temp_token,
-            'destino': usuario.email,
+            'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken (consistente con registro)
+            'canal': 'email',
+            'destino': f"{usuario.email[:2]}***@{usuario.email.split('@')[1]}",
             'metodos_disponibles': ['email']
         })
 
@@ -353,6 +352,10 @@ def login_user(request):
     })
 @csrf_exempt
 def verificar_login_2fa(request):
+    """
+    Verifica el código 2FA del login
+    Ahora usa el mismo sistema que el registro (OTP almacenado en modelo Usuario)
+    """
     if request.method != 'POST':
         return JsonResponse({
             'ok': False,
@@ -375,66 +378,61 @@ def verificar_login_2fa(request):
             'error': 'tempToken y codigo son requeridos'
         }, status=400)
 
-    # Obtener datos de la sesión
-    session_data = request.session.get(temp_token)
-    if not session_data:
-        return JsonResponse({
-            'ok': False,
-            'error': 'Sesión 2FA inválida'
-        }, status=400)
-
-    # Verificar expiración (5 minutos)
-    if datetime.datetime.now().timestamp() > session_data.get('expira', 0):
-        del request.session[temp_token]
-        return JsonResponse({
-            'ok': False,
-            'error': 'Código expirado. Solicita uno nuevo'
-        }, status=400)
-
-    # Verificar código
-    if session_data['codigo'] != str(codigo):
-        session_data['intentos'] = session_data.get('intentos', 0) + 1
-        request.session[temp_token] = session_data  # Guardar intentos
-
-        if session_data['intentos'] >= 5:
-            del request.session[temp_token]
+    try:
+        # Obtener usuario por ID (mismo sistema que registro)
+        try:
+            usuario = Usuario.objects.get(id=temp_token)
+        except (Usuario.DoesNotExist, ValueError):
             return JsonResponse({
                 'ok': False,
-                'error': 'Demasiados intentos'
-            }, status=429)
-
+                'error': 'Usuario no encontrado'
+            }, status=404)
+        
+        # Verificar si el código ha expirado (10 minutos)
+        if usuario.otp_expira and usuario.otp_expira < timezone.now():
+            usuario.codigo_otp = None
+            usuario.otp_expira = None
+            usuario.save()
+            return JsonResponse({
+                'ok': False,
+                'error': 'Código expirado. Solicita uno nuevo.'
+            }, status=400)
+        
+        # Verificar código OTP
+        if not usuario.codigo_otp or usuario.codigo_otp != str(codigo):
+            return JsonResponse({
+                'ok': False,
+                'error': 'Código incorrecto'
+            }, status=400)
+        
+        # Código correcto: limpiar OTP y establecer sesión
+        usuario.codigo_otp = None
+        usuario.otp_expira = None
+        usuario.save()
+        
+        # Establecer sesión de autenticación
+        request.session['user_id'] = usuario.id
+        request.session['authenticated'] = True
+        request.session['email'] = usuario.email
+        
+        return JsonResponse({
+            'ok': True,
+            'usuario': {
+                'id': usuario.id,
+                'email': usuario.email,
+                'username': usuario.username,
+            },
+            'message': 'Login exitoso'
+        })
+        
+    except Exception as e:
+        import traceback
+        print(f"Error en verificar_login_2fa: {str(e)}")
+        print(traceback.format_exc())
         return JsonResponse({
             'ok': False,
-            'error': 'Código incorrecto'
-        }, status=400)
-
-    # Código correcto: obtener usuario
-    try:
-        usuario = Usuario.objects.get(email=session_data['email'])
-    except Usuario.DoesNotExist:
-        return JsonResponse({
-            'ok': False,
-            'error': 'Usuario no encontrado'
-        }, status=400)
-
-    # Establecer sesión de autenticación
-    request.session['user_id'] = usuario.id
-    request.session['authenticated'] = True
-    request.session['email'] = usuario.email
-    
-    # Limpiar sesión temporal 2FA
-    del request.session[temp_token]
-
-    # Retornar respuesta con usuario (estructura requerida por frontend)
-    return JsonResponse({
-        'ok': True,
-        'usuario': {
-            'id': usuario.id,
-            'email': usuario.email,
-            'username': usuario.username,
-        },
-        'message': 'Login exitoso'
-    })
+            'error': f'Error al verificar código: {str(e)}'
+        }, status=500)
 @csrf_exempt
 def google_login(request):
     if request.method != 'POST':
