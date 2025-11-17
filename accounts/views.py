@@ -516,6 +516,7 @@ def obtener_pregunta_secreta(request):
 def recuperar_contrasena(request):
     """
     Verifica la respuesta a la pregunta secreta
+    Ahora usa el mismo sistema que OTP: guarda en el modelo Usuario
     """
     if request.method != 'POST':
         return JsonResponse({
@@ -554,16 +555,24 @@ def recuperar_contrasena(request):
             'error': 'Respuesta incorrecta'
         }, status=400)
 
-    # Generar token temporal
-    temp_token = str(uuid.uuid4())
-    request.session[temp_token] = {
-        'email': usuario.email,
-        'expira': (datetime.datetime.now() + datetime.timedelta(minutes=10)).timestamp(),
-    }
+    # Generar token temporal y guardarlo en el usuario (como OTP)
+    # Usar codigo_otp para marcar que la validación fue exitosa
+    codigo_validacion = 'SECRET_OK_' + str(uuid.uuid4())[:8]
+    usuario.codigo_otp = codigo_validacion
+    usuario.otp_expira = timezone.now() + timedelta(minutes=10)
+    usuario.save()
 
-    return JsonResponse({'ok': True, 'tempToken': temp_token})
+    return JsonResponse({
+        'ok': True, 
+        'tempToken': str(usuario.id),
+        'message': 'Respuesta correcta. Ahora puedes cambiar tu contraseña.'
+    })
 @csrf_exempt
 def restablecer_contrasena(request):
+    """
+    Restablece la contraseña después de verificar la pregunta secreta
+    Ahora usa el mismo sistema que OTP: verifica desde el modelo Usuario
+    """
     if request.method != 'POST':
         return JsonResponse({
             'ok': False,
@@ -586,33 +595,50 @@ def restablecer_contrasena(request):
             'error': 'tempToken y nuevaContrasena son requeridos'
         }, status=400)
 
-    session_data = request.session.get(temp_token)
-    if not session_data:
+    if len(nueva_contrasena) < 8:
+        return JsonResponse({
+            'ok': False,
+            'error': 'La contraseña debe tener al menos 8 caracteres'
+        }, status=400)
+
+    # Intentar obtener usuario por ID (como OTP)
+    try:
+        usuario = Usuario.objects.get(id=temp_token)
+    except (Usuario.DoesNotExist, ValueError):
         return JsonResponse({
             'ok': False,
             'error': 'Token inválido o expirado'
         }, status=400)
 
+    # Verificar que el código de validación existe y no ha expirado
+    if not usuario.codigo_otp or not usuario.otp_expira:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Token inválido o expirado. Solicita uno nuevo.'
+        }, status=400)
+
     # Verificar expiración (10 minutos)
-    if datetime.datetime.now().timestamp() > session_data['expira']:
-        del request.session[temp_token]
-        return JsonResponse({
-            'ok': False,
-            'error': 'Token expirado'
-        }, status=400)
-
-    try:
-        usuario = Usuario.objects.get(email=session_data['email'])
-        usuario.set_password(nueva_contrasena)
+    if usuario.otp_expira < timezone.now():
+        usuario.codigo_otp = None
+        usuario.otp_expira = None
         usuario.save()
-    except Usuario.DoesNotExist:
         return JsonResponse({
             'ok': False,
-            'error': 'Usuario no encontrado'
+            'error': 'Token expirado. Solicita uno nuevo.'
         }, status=400)
 
-    # Limpiar sesión
-    del request.session[temp_token]
+    # Verificar que el código inicie con 'SECRET_OK_' (marca de validación exitosa)
+    if not usuario.codigo_otp.startswith('SECRET_OK_'):
+        return JsonResponse({
+            'ok': False,
+            'error': 'Token inválido. Debes verificar la pregunta secreta primero.'
+        }, status=400)
+
+    # Actualizar contraseña
+    usuario.set_password(nueva_contrasena)
+    usuario.codigo_otp = None
+    usuario.otp_expira = None
+    usuario.save()
 
     return JsonResponse({
         'ok': True,
