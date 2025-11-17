@@ -77,7 +77,6 @@ def register_user(request):
             email_enviado = enviar_otp_email(data['correo'], codigo_otp)
             if email_enviado:
                 return JsonResponse({
-                    'ok': True,
                     'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                     'requires2fa': True,
                     'canal': 'email',
@@ -87,7 +86,6 @@ def register_user(request):
             else:
                 # Si falla el envío, aún devolvemos éxito pero con advertencia
                 return JsonResponse({
-                    'ok': True,
                     'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                     'requires2fa': True,
                     'canal': 'email',
@@ -102,7 +100,6 @@ def register_user(request):
             print(f"Error enviando email OTP: {str(e)}")
             print(traceback.format_exc())
             return JsonResponse({
-                'ok': True,
                 'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                 'requires2fa': True,
                 'canal': 'email',
@@ -302,43 +299,7 @@ def login_user(request):
             'error': 'Credenciales incorrectas'
         }, status=401)
 
-    # Si el usuario está verificado, requiere 2FA
-    if usuario.verificado:
-        # Generar código OTP con SendGrid (consistente con registro)
-        codigo_otp = generar_codigo_otp()
-        otp_expira = timezone.now() + timedelta(minutes=10)
-        
-        # Guardar código OTP en el usuario
-        usuario.codigo_otp = codigo_otp
-        usuario.otp_expira = otp_expira
-        usuario.save()
-
-        # Enviar código OTP por email usando SendGrid
-        try:
-            email_enviado = enviar_otp_email(usuario.email, codigo_otp)
-            if not email_enviado:
-                return JsonResponse({
-                    'ok': False,
-                    'error': 'No se pudo enviar el correo de verificación'
-                }, status=500)
-        except Exception as e:
-            import traceback
-            print(f"Error enviando email OTP en login: {str(e)}")
-            print(traceback.format_exc())
-            return JsonResponse({
-                'ok': False,
-                'error': 'No se pudo enviar el correo de verificación'
-            }, status=500)
-
-        return JsonResponse({
-            'requires2fa': True,
-            'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken (consistente con registro)
-            'canal': 'email',
-            'destino': f"{usuario.email[:2]}***@{usuario.email.split('@')[1]}",
-            'metodos_disponibles': ['email']
-        })
-
-    # Si no está verificado, login directo sin 2FA
+    # Login directo sin 2FA (modificado según requerimiento)
     # Establecer sesión de autenticación
     request.session['user_id'] = usuario.id
     request.session['authenticated'] = True
@@ -506,7 +467,10 @@ def google_login(request):
             'error': f'Token de Google inválido: {str(e)}'
         }, status=401)
 @csrf_exempt
-def recuperar_contrasena(request):
+def obtener_pregunta_secreta(request):
+    """
+    Obtiene la pregunta secreta de un usuario basándose en su email
+    """
     if request.method != 'POST':
         return JsonResponse({
             'ok': False,
@@ -516,7 +480,52 @@ def recuperar_contrasena(request):
     try:
         data = json.loads(request.body)
         email = data.get('email')
-        pregunta_secreta = data.get('preguntaSecreta')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({
+            'ok': False,
+            'error': 'Datos inválidos'
+        }, status=400)
+
+    if not email:
+        return JsonResponse({
+            'ok': False,
+            'error': 'El email es requerido'
+        }, status=400)
+
+    try:
+        usuario = Usuario.objects.get(email=email)
+    except Usuario.DoesNotExist:
+        # Por seguridad, no revelar si el usuario existe o no
+        return JsonResponse({
+            'ok': False,
+            'error': 'No se encontró una cuenta con ese correo'
+        }, status=404)
+
+    if not usuario.pregunta_secreta:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Este usuario no tiene pregunta secreta configurada'
+        }, status=400)
+
+    return JsonResponse({
+        'ok': True,
+        'preguntaSecreta': usuario.pregunta_secreta
+    })
+
+@csrf_exempt
+def recuperar_contrasena(request):
+    """
+    Verifica la respuesta a la pregunta secreta
+    """
+    if request.method != 'POST':
+        return JsonResponse({
+            'ok': False,
+            'error': 'Método no permitido'
+        }, status=405)
+
+    try:
+        data = json.loads(request.body)
+        email = data.get('email')
         respuesta_secreta = data.get('respuestaSecreta')
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({
@@ -524,7 +533,7 @@ def recuperar_contrasena(request):
             'error': 'Datos inválidos'
         }, status=400)
 
-    if not email or not pregunta_secreta or not respuesta_secreta:
+    if not email or not respuesta_secreta:
         return JsonResponse({
             'ok': False,
             'error': 'Todos los campos son requeridos'
@@ -538,17 +547,11 @@ def recuperar_contrasena(request):
             'error': 'Usuario no encontrado'
         }, status=400)
 
-    if usuario.pregunta_secreta != pregunta_secreta:
-        return JsonResponse({
-            'ok': False,
-            'error': 'Pregunta secreta incorrecta'
-        }, status=400)
-
-    # Corregido: comparar respuesta secreta directamente (no está hasheada)
+    # Comparar respuesta secreta (no está hasheada)
     if usuario.respuesta_secreta != respuesta_secreta:
         return JsonResponse({
             'ok': False,
-            'error': 'Respuesta secreta incorrecta'
+            'error': 'Respuesta incorrecta'
         }, status=400)
 
     # Generar token temporal

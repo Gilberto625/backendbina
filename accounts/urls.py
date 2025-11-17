@@ -9,6 +9,7 @@ urlpatterns = [
     path('login/', views.login_user, name='login'),
     path('login/2fa/verificar/', views.verificar_login_2fa, name='verificar_login_2fa'),
     path('login/google/', views.google_login, name='google_login'),
+    path('obtener-pregunta-secreta/', views.obtener_pregunta_secreta, name='obtener_pregunta_secreta'),
     path('recuperar/', views.recuperar_contrasena, name='recuperar_contrasena'),
     path('restablecer/', views.restablecer_contrasena, name='restablecer_contrasena'),
     
