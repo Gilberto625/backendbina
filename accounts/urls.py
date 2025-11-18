@@ -20,4 +20,9 @@ urlpatterns = [
     path('verificar-otp-recuperacion/', views.verificar_otp_recuperacion, name='verificar_otp_recuperacion'),
     path('reenviar-otp-recuperacion/', views.reenviar_otp_recuperacion, name='reenviar_otp_recuperacion'),
     path('actualizar-contrasena-otp/', views.actualizar_contrasena_otp, name='actualizar_contrasena_otp'),
+    
+    # Rutas de seguridad
+    path('seguridad/estado/', views.obtener_estado_seguridad, name='obtener_estado_seguridad'),
+    path('cambiar-contrasena/', views.cambiar_contrasena, name='cambiar_contrasena'),
+    path('backup-codes/generar/', views.generar_codigos_respaldo, name='generar_codigos_respaldo'),
 ]

@@ -1030,3 +1030,194 @@ def actualizar_contrasena_otp(request):
             'ok': False,
             'error': f'Error al actualizar contraseña: {str(e)}'
         }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def obtener_estado_seguridad(request):
+    """
+    Obtiene el estado de seguridad del usuario
+    
+    Body esperado:
+    {
+        "email": "juan@example.com"
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        email = data.get('email')
+        
+        if not email:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Email es requerido'
+            }, status=400)
+        
+        try:
+            usuario = Usuario.objects.get(email=email)
+        except Usuario.DoesNotExist:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Usuario no encontrado'
+            }, status=404)
+        
+        # Contar códigos de respaldo disponibles
+        backup_codes_count = 0
+        if usuario.backup_codes:
+            try:
+                import json as json_lib
+                codes = json_lib.loads(usuario.backup_codes)
+                if isinstance(codes, list):
+                    backup_codes_count = len(codes)
+            except:
+                backup_codes_count = 0
+        
+        # Verificar si tiene preguntas de seguridad
+        tiene_preguntas = bool(usuario.pregunta_secreta and usuario.respuesta_secreta)
+        
+        return JsonResponse({
+            'ok': True,
+            'email_2fa': usuario.verificado,  # Email 2FA está habilitado si el usuario está verificado
+            'totp_habilitado': usuario.totp_enabled,
+            'codigos_respaldo_disponibles': backup_codes_count,
+            'tiene_preguntas_seguridad': tiene_preguntas
+        }, status=200)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error en obtener_estado_seguridad: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'ok': False,
+            'error': f'Error al obtener estado de seguridad: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def cambiar_contrasena(request):
+    """
+    Cambia la contraseña del usuario autenticado
+    
+    Body esperado:
+    {
+        "email": "juan@example.com",
+        "contrasena_actual": "password123",
+        "nueva_contrasena": "newpassword123"
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        email = data.get('email')
+        contrasena_actual = data.get('contrasena_actual')
+        nueva_contrasena = data.get('nueva_contrasena')
+        
+        if not email or not contrasena_actual or not nueva_contrasena:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Email, contraseña actual y nueva contraseña son requeridos'
+            }, status=400)
+        
+        try:
+            usuario = Usuario.objects.get(email=email)
+        except Usuario.DoesNotExist:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Usuario no encontrado'
+            }, status=404)
+        
+        # Verificar contraseña actual
+        if not usuario.check_password(contrasena_actual):
+            return JsonResponse({
+                'ok': False,
+                'error': 'Contraseña actual incorrecta'
+            }, status=400)
+        
+        # Validar que la nueva contraseña sea diferente
+        if usuario.check_password(nueva_contrasena):
+            return JsonResponse({
+                'ok': False,
+                'error': 'La nueva contraseña debe ser diferente a la actual'
+            }, status=400)
+        
+        # Validar longitud mínima
+        if len(nueva_contrasena) < 8:
+            return JsonResponse({
+                'ok': False,
+                'error': 'La nueva contraseña debe tener al menos 8 caracteres'
+            }, status=400)
+        
+        # Actualizar contraseña
+        usuario.set_password(nueva_contrasena)
+        usuario.save()
+        
+        return JsonResponse({
+            'ok': True,
+            'message': 'Contraseña cambiada exitosamente'
+        }, status=200)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error en cambiar_contrasena: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'ok': False,
+            'error': f'Error al cambiar contraseña: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def generar_codigos_respaldo(request):
+    """
+    Genera códigos de respaldo para el usuario
+    
+    Body esperado:
+    {
+        "email": "juan@example.com"
+    }
+    """
+    try:
+        data = json.loads(request.body)
+        email = data.get('email')
+        
+        if not email:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Email es requerido'
+            }, status=400)
+        
+        try:
+            usuario = Usuario.objects.get(email=email)
+        except Usuario.DoesNotExist:
+            return JsonResponse({
+                'ok': False,
+                'error': 'Usuario no encontrado'
+            }, status=404)
+        
+        # Generar 10 códigos de 8 dígitos
+        import random
+        codigos = []
+        for _ in range(10):
+            codigo = ''.join([str(random.randint(0, 9)) for _ in range(8)])
+            codigos.append(codigo)
+        
+        # Guardar códigos como JSON
+        import json as json_lib
+        usuario.backup_codes = json_lib.dumps(codigos)
+        usuario.save()
+        
+        return JsonResponse({
+            'ok': True,
+            'codigos': codigos,
+            'message': 'Códigos de respaldo generados exitosamente'
+        }, status=200)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error en generar_codigos_respaldo: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'ok': False,
+            'error': f'Error al generar códigos de respaldo: {str(e)}'
+        }, status=500)

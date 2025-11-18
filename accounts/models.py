@@ -13,6 +13,9 @@ class Usuario(AbstractUser):
     otp_expira = models.DateTimeField(null=True, blank=True)
     confirmado = models.BooleanField(default=False)
     totp_enabled = models.BooleanField(default=False)  # Campo existente en BD
+    
+    # Campo para backup codes (almacenado como JSON string)
+    backup_codes = models.TextField(blank=True, null=True)  # JSON array de códigos
 
     def __str__(self):
         return self.email
