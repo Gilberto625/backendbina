@@ -9,10 +9,21 @@ from django.middleware.csrf import get_token
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 from datetime import timedelta
-from django.contrib.auth.hashers import make_password, check_password
+from django.contrib.auth.hashers import check_password
 import json
 import datetime
 from .utils.sendgrid_otp_service import generar_codigo_otp, enviar_otp_email, enviar_otp_recuperacion
+from .utils.validators import (
+    sanitize_user_input, 
+    validate_registration_data,
+    validate_password_strength
+)
+from .utils.security_utils import (
+    verificar_bloqueo,
+    registrar_intento_fallido,
+    resetear_intentos,
+    validar_respuesta_secreta
+)
 Usuario = get_user_model()
 
 @ensure_csrf_cookie
@@ -33,34 +44,41 @@ def register_user(request):
         return JsonResponse({'error': 'JSON inválido'}, status=400)
 
     try:
-        # Validar campos requeridos
-        campos = ['nombre', 'apellidopaterno', 'apellidomaterno', 'username',
-                  'correo', 'contrasena', 'telefono', 'preguntasecreta', 'respuestasecreta']
-        for c in campos:
-            if not data.get(c):
-                return JsonResponse({'error': f'El campo {c} es obligatorio'}, status=400)
+        # Sanitizar y validar datos de entrada
+        data_sanitized = sanitize_user_input(data)
+        
+        # Validar todos los datos (formato, complejidad de contraseña, etc.)
+        is_valid, error_msg = validate_registration_data(data_sanitized)
+        if not is_valid:
+            return JsonResponse({'error': error_msg}, status=400)
+        
+        # Validar seguridad de respuesta secreta
+        respuesta_valida, error_respuesta = validar_respuesta_secreta(data_sanitized.get('respuestasecreta', ''))
+        if not respuesta_valida:
+            return JsonResponse({'error': error_respuesta}, status=400)
 
-        # Verificar unicidad
-        if Usuario.objects.filter(username=data['username']).exists():
+        # Verificar unicidad (usando datos sanitizados)
+        if Usuario.objects.filter(username=data_sanitized['username']).exists():
             return JsonResponse({'error': 'El nombre de usuario ya está en uso'}, status=400)
-        if Usuario.objects.filter(email=data['correo']).exists():
+        if Usuario.objects.filter(email=data_sanitized['correo']).exists():
             return JsonResponse({'error': 'El correo ya está registrado'}, status=400)
-        if Usuario.objects.filter(telefono=data['telefono']).exists():
+        if Usuario.objects.filter(telefono=data_sanitized['telefono']).exists():
             return JsonResponse({'error': 'El teléfono ya está registrado'}, status=400)
 
-        # Crear usuario
+        # Crear usuario con datos sanitizados
         usuario = Usuario(
-            username=data['username'],
-            email=data['correo'],
-            first_name=data['nombre'],
-            last_name=data['apellidopaterno'],
-            telefono=data['telefono'],
-            pregunta_secreta=data['preguntasecreta'],
-            respuesta_secreta=data['respuestasecreta'],
+            username=data_sanitized['username'],
+            email=data_sanitized['correo'],
+            first_name=data_sanitized['nombre'],
+            last_name=data_sanitized['apellidopaterno'],
+            telefono=data_sanitized['telefono'],
+            pregunta_secreta=data_sanitized['preguntasecreta'],
+            respuesta_secreta=data_sanitized['respuestasecreta'],
             verificado=False,
             totp_enabled=False,  # Inicializar campo requerido
         )
-        usuario.set_password(data['contrasena'])
+        # Usar set_password para hash seguro (bcrypt por defecto en Django)
+        usuario.set_password(data_sanitized['contrasena'])
         usuario.save()
 
         # Generar código OTP con SendGrid
@@ -74,13 +92,13 @@ def register_user(request):
 
         # Enviar código OTP por email usando SendGrid
         try:
-            email_enviado = enviar_otp_email(data['correo'], codigo_otp)
+            email_enviado = enviar_otp_email(data_sanitized['correo'], codigo_otp)
             if email_enviado:
                 return JsonResponse({
                     'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                     'requires2fa': True,
                     'canal': 'email',
-                    'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                    'destino': f"{data_sanitized['correo'][:2]}***@{data_sanitized['correo'].split('@')[1]}",
                     'tempToken': str(usuario.id),  # Usar ID del usuario como tempToken
                 }, status=201)
             else:
@@ -89,7 +107,7 @@ def register_user(request):
                     'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                     'requires2fa': True,
                     'canal': 'email',
-                    'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                    'destino': f"{data_sanitized['correo'][:2]}***@{data_sanitized['correo'].split('@')[1]}",
                     'tempToken': str(usuario.id),
                     'warning': 'El correo puede no haberse enviado. Verifica tu configuración de SendGrid.'
                 }, status=201)
@@ -103,7 +121,7 @@ def register_user(request):
                 'mensaje': 'Usuario registrado con éxito. Ingresa el código OTP enviado a tu correo.',
                 'requires2fa': True,
                 'canal': 'email',
-                'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+                'destino': f"{data_sanitized['correo'][:2]}***@{data_sanitized['correo'].split('@')[1]}",
                 'tempToken': str(usuario.id),
                 'warning': 'Error al enviar correo. Verifica tu configuración de SendGrid.'
             }, status=201)
@@ -284,22 +302,83 @@ def login_user(request):
             'error': 'Email y contraseña son requeridos'
         }, status=400)
 
+    # Sanitizar email
+    from .utils.validators import sanitize_string, validate_email
+    email = sanitize_string(email, max_length=254)
+    
+    if not validate_email(email):
+        return JsonResponse({
+            'ok': False,
+            'error': 'Formato de email inválido'
+        }, status=400)
+
     # Autenticar usuario
     try:
         usuario = Usuario.objects.get(email=email)
     except Usuario.DoesNotExist:
+        # Por seguridad, no revelar si el usuario existe o no
         return JsonResponse({
             'ok': False,
             'error': 'Credenciales incorrectas'
         }, status=401)
 
+    # Verificar si la cuenta está bloqueada por intentos fallidos
+    esta_bloqueado, tiempo_restante, mensaje_bloqueo = verificar_bloqueo(usuario)
+    if esta_bloqueado:
+        return JsonResponse({
+            'ok': False,
+            'error': mensaje_bloqueo,
+            'bloqueado': True,
+            'tiempo_restante': int(tiempo_restante)
+        }, status=429)  # 429 Too Many Requests
+
+    # Verificar contraseña
     if not usuario.check_password(password):
+        # Registrar intento fallido
+        bloqueado, mensaje = registrar_intento_fallido(usuario)
+        if bloqueado:
+            return JsonResponse({
+                'ok': False,
+                'error': mensaje,
+                'bloqueado': True
+            }, status=429)
         return JsonResponse({
             'ok': False,
-            'error': 'Credenciales incorrectas'
+            'error': mensaje
         }, status=401)
 
-    # Login directo sin 2FA (modificado según requerimiento)
+    # VERIFICACIÓN DE CORREO: No permitir login sin verificar correo
+    if not usuario.verificado:
+        return JsonResponse({
+            'ok': False,
+            'error': 'Debes verificar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada para el código de verificación.',
+            'requiresVerification': True
+        }, status=403)
+
+    # MFA/TOTP: Si está habilitado, requerir segundo factor
+    if usuario.totp_enabled:
+        # Generar código OTP para segundo factor
+        codigo_otp = generar_codigo_otp()
+        otp_expira = timezone.now() + timedelta(minutes=10)
+        usuario.codigo_otp = codigo_otp
+        usuario.otp_expira = otp_expira
+        usuario.save()
+        
+        # Enviar código por email
+        enviar_otp_email(usuario.email, codigo_otp)
+        
+        return JsonResponse({
+            'ok': False,
+            'requires2fa': True,
+            'canal': 'email',
+            'destino': f"{usuario.email[:2]}***@{usuario.email.split('@')[1]}",
+            'tempToken': str(usuario.id),
+            'message': 'Autenticación multifactor requerida. Ingresa el código enviado a tu correo.'
+        }, status=200)
+
+    # Login exitoso: resetear intentos fallidos
+    resetear_intentos(usuario)
+
     # Establecer sesión de autenticación
     request.session['user_id'] = usuario.id
     request.session['authenticated'] = True
@@ -595,10 +674,12 @@ def restablecer_contrasena(request):
             'error': 'tempToken y nuevaContrasena son requeridos'
         }, status=400)
 
-    if len(nueva_contrasena) < 8:
+    # Validar complejidad de contraseña
+    is_valid, error_msg = validate_password_strength(nueva_contrasena)
+    if not is_valid:
         return JsonResponse({
             'ok': False,
-            'error': 'La contraseña debe tener al menos 8 caracteres'
+            'error': error_msg
         }, status=400)
 
     # Intentar obtener usuario por ID (como OTP)
@@ -990,10 +1071,12 @@ def actualizar_contrasena_otp(request):
                 'error': 'tempToken y nuevaContrasena son requeridos'
             }, status=400)
         
-        if len(nueva_contrasena) < 8:
+        # Validar complejidad de contraseña
+        is_valid, error_msg = validate_password_strength(nueva_contrasena)
+        if not is_valid:
             return JsonResponse({
                 'ok': False,
-                'error': 'La contraseña debe tener al menos 8 caracteres'
+                'error': error_msg
             }, status=400)
         
         try:
@@ -1140,11 +1223,12 @@ def cambiar_contrasena(request):
                 'error': 'La nueva contraseña debe ser diferente a la actual'
             }, status=400)
         
-        # Validar longitud mínima
-        if len(nueva_contrasena) < 8:
+        # Validar complejidad de contraseña
+        is_valid, error_msg = validate_password_strength(nueva_contrasena)
+        if not is_valid:
             return JsonResponse({
                 'ok': False,
-                'error': 'La nueva contraseña debe tener al menos 8 caracteres'
+                'error': error_msg
             }, status=400)
         
         # Actualizar contraseña
@@ -1220,4 +1304,83 @@ def generar_codigos_respaldo(request):
         return JsonResponse({
             'ok': False,
             'error': f'Error al generar códigos de respaldo: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def logout_user(request):
+    """
+    Cierra la sesión del usuario y revoca todas las sesiones activas
+    
+    Body esperado: (vacío)
+    """
+    try:
+        # Invalidar sesión actual
+        request.session.flush()
+        
+        return JsonResponse({
+            'ok': True,
+            'message': 'Sesión cerrada exitosamente'
+        }, status=200)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error en logout_user: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'ok': False,
+            'error': f'Error al cerrar sesión: {str(e)}'
+        }, status=500)
+
+
+@ensure_csrf_cookie
+@require_http_methods(["GET"])
+def verificar_sesion(request):
+    """
+    Verifica si el usuario tiene una sesión activa y válida
+    
+    Returns:
+        JsonResponse con estado de la sesión
+    """
+    try:
+        if request.session.get('authenticated') and request.session.get('user_id'):
+            try:
+                usuario = Usuario.objects.get(id=request.session['user_id'])
+                
+                # Verificar que el usuario sigue activo
+                if not usuario.is_active:
+                    request.session.flush()
+                    return JsonResponse({
+                        'ok': False,
+                        'error': 'Usuario inactivo'
+                    }, status=401)
+                
+                return JsonResponse({
+                    'ok': True,
+                    'usuario': {
+                        'id': usuario.id,
+                        'email': usuario.email,
+                        'username': usuario.username,
+                    }
+                })
+            except Usuario.DoesNotExist:
+                request.session.flush()
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'Usuario no encontrado'
+                }, status=401)
+        
+        return JsonResponse({
+            'ok': False,
+            'error': 'Sesión no válida'
+        }, status=401)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error en verificar_sesion: {str(e)}")
+        print(traceback.format_exc())
+        return JsonResponse({
+            'ok': False,
+            'error': f'Error al verificar sesión: {str(e)}'
         }, status=500)

@@ -141,6 +141,49 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'secure': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'formatter': 'secure',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'secure',
+        },
+    },
+    'loggers': {
+        'accounts': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
+
+# Crear directorio de logs si no existe
+import os
+logs_dir = BASE_DIR / 'logs'
+if not logs_dir.exists():
+    os.makedirs(logs_dir, exist_ok=True)
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
@@ -264,15 +307,46 @@ CSRF_TRUSTED_ORIGINS = config(
 
 # Session Settings
 SESSION_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = not DEBUG  # True en producción
+SESSION_COOKIE_SECURE = not DEBUG  # True en producción (requiere HTTPS)
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 86400  # 24 horas
+SESSION_COOKIE_AGE = 900  # 15 minutos de inactividad (900 segundos)
+SESSION_SAVE_EVERY_REQUEST = True  # Renovar sesión en cada request para extender tiempo
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Mantener sesión al cerrar navegador (pero expira por tiempo)
 
 # CSRF Cookie Settings
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
 CSRF_COOKIE_HTTPONLY = False  # Angular necesita leer el token
+
+# Security Headers (solo en producción)
+if not DEBUG:
+    # Forzar HTTPS
+    SECURE_SSL_REDIRECT = True  # Redirigir HTTP a HTTPS automáticamente
+    
+    # HSTS (HTTP Strict Transport Security) - 1 año
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Prevenir clickjacking
+    X_FRAME_OPTIONS = 'DENY'
+    
+    # Content Security
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    
+    # Content Security Policy (CSP)
+    # Ajustar según necesidades específicas de la aplicación
+    SECURE_CONTENT_SECURITY_POLICY = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.googleapis.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://backendbina-1.onrender.com https://frontbina.vercel.app; "
+        "frame-ancestors 'none';"
+    )
 
 
 

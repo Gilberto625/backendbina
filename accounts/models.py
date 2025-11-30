@@ -16,6 +16,11 @@ class Usuario(AbstractUser):
     
     # Campo para backup codes (almacenado como JSON string)
     backup_codes = models.TextField(blank=True, null=True)  # JSON array de códigos
+    
+    # Campos para protección contra fuerza bruta
+    intentos_fallidos = models.IntegerField(default=0)  # Contador de intentos fallidos
+    bloqueado_hasta = models.DateTimeField(null=True, blank=True)  # Bloqueo temporal
+    ultimo_intento = models.DateTimeField(null=True, blank=True)  # Timestamp del último intento
 
     def __str__(self):
         return self.email
