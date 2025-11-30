@@ -102,6 +102,9 @@ if config('DATABASE_URL', default=None):
 
             conn_health_checks=True,
 
+            # Opciones adicionales para mejor manejo de conexiones
+            ssl_require=True,  # Requerir SSL en producción
+
         )
 
     }
