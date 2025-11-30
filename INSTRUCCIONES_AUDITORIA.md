@@ -183,3 +183,4 @@ Para preguntas sobre la auditoría, consultar:
 - Documentación: `EVALUACION_VULNERABILIDADES.md`
 - Scripts: `scripts/evaluar_vulnerabilidades.sh`
 
+

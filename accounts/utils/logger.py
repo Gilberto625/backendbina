@@ -106,3 +106,4 @@ def log_security_event(event_type, user_id=None, ip_address=None, details=None):
     
     logger.warning(f"SECURITY EVENT: {event_type} - {log_data}")
 
+

@@ -46,6 +46,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # ✅ Debe estar PRIMERO
     'django.middleware.security.SecurityMiddleware',
+    'core.middleware.SecurityHeadersMiddleware',  # Headers de seguridad personalizados
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Para archivos estáticos en producción
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -323,16 +324,20 @@ CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = False  # Angular necesita leer el token
 
 # Security Headers (solo en producción)
+# NOTA: Los headers se agregan mediante SecurityHeadersMiddleware
+# Estas configuraciones son para compatibilidad con SecurityMiddleware de Django
 if not DEBUG:
     # Forzar HTTPS
     SECURE_SSL_REDIRECT = True  # Redirigir HTTP a HTTPS automáticamente
     
     # HSTS (HTTP Strict Transport Security) - 1 año
+    # El middleware personalizado también agrega este header
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     
     # Prevenir clickjacking
+    # El middleware personalizado también agrega este header
     X_FRAME_OPTIONS = 'DENY'
     
     # Content Security
@@ -340,15 +345,18 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     
     # Content Security Policy (CSP)
-    # Ajustar según necesidades específicas de la aplicación
+    # El middleware personalizado agrega este header con configuración completa
+    # Esta configuración es un fallback
     SECURE_CONTENT_SECURITY_POLICY = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.googleapis.com; "
-        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.googleapis.com https://apis.google.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data: https:; "
-        "font-src 'self' data:; "
-        "connect-src 'self' https://backendbina-1.onrender.com https://frontbina.vercel.app; "
-        "frame-ancestors 'none';"
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "connect-src 'self' https://backendbina-1.onrender.com https://frontbina.vercel.app https://*.vercel.app https://www.googleapis.com; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self';"
     )
 
 

@@ -436,3 +436,4 @@ curl -X POST https://backendbina-1.onrender.com/api/usuarios/register/ \
 
 **Estado**: ✅ **LISTO PARA PRODUCCIÓN**
 
+

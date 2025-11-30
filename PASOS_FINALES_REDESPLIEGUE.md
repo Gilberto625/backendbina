@@ -106,3 +106,4 @@ databases:
 
 El `render.yaml` ya está actualizado con `backendbina_db_wuj1`. Solo verifica que ese sea el nombre real en Render, o actualízalo si es diferente.
 
+

@@ -119,3 +119,4 @@ postgresql://...@dpg-d42ghmbe5dus73cnegf0-a.oregon-postgres.render.com/...
 - Si la base de datos se recrea, la URL se actualiza sola
 - Menos propenso a errores
 
+

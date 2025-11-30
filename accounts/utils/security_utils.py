@@ -128,3 +128,4 @@ def es_respuesta_secreta_segura(respuesta):
     es_valida, _ = validar_respuesta_secreta(respuesta)
     return es_valida
 
+

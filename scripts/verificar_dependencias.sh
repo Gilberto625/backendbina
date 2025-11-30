@@ -43,3 +43,4 @@ echo "- Revisar CVEs críticas y actualizar dependencias"
 echo "- Ejecutar este script semanalmente"
 echo "- Mantener Django y dependencias actualizadas"
 
+

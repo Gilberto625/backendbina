@@ -96,3 +96,4 @@ Si usas `render.yaml` con `fromDatabase`, **NO necesitas** configurar `DATABASE_
 
 **Recomendación**: Elimina `DATABASE_URL` manual y deja que Render lo maneje automáticamente.
 
+

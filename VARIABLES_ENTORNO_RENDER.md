@@ -127,3 +127,4 @@ accounts/migrations/0005_usuario_intentos_fallidos_and_more.py
 
 **Listo para redesplegar**: ✅ (después de crear la migración)
 
+

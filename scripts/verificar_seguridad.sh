@@ -20,3 +20,4 @@ echo "Verificación completa en:"
 echo "https://securityheaders.com/?q=$URL"
 echo ""
 
+

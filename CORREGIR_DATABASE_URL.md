@@ -169,3 +169,4 @@ Si ves errores de conexión, verifica:
 
 **Resultado**: Conexión automática y confiable
 
+

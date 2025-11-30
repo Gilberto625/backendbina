@@ -179,3 +179,4 @@ El `build.sh` ya está configurado correctamente y aplicará las migraciones aut
 
 **Listo para redesplegar**: ✅ (después de crear la migración)
 
+
