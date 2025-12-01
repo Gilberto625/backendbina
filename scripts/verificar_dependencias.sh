@@ -44,3 +44,4 @@ echo "- Ejecutar este script semanalmente"
 echo "- Mantener Django y dependencias actualizadas"
 
 
+
