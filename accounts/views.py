@@ -626,12 +626,20 @@ def reenviar_otp_recuperacion(request):
     if not correo:
         return JsonResponse({'error': 'El correo es requerido'}, status=400)
 
-    # Crear un nuevo request body con 'email' para recuperar_otp
-    import json as json_module
-    request._body = json_module.dumps({'email': correo}).encode('utf-8')
+    # Simular request body con email para recuperar_otp
+    # Guardar el body original
+    original_body = request.body
+    # Crear nuevo body con email
+    new_body = json.dumps({'email': correo}).encode('utf-8')
+    request._body = new_body
     
-    # Llamar a recuperar_otp con el mismo email
-    return recuperar_otp(request)
+    try:
+        # Llamar a recuperar_otp
+        response = recuperar_otp(request)
+        return response
+    finally:
+        # Restaurar body original (aunque no es crítico)
+        request._body = original_body
 
 @csrf_exempt
 def actualizar_contrasena_otp(request):
