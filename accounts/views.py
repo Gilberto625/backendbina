@@ -3,6 +3,8 @@ from firebase_admin import auth as firebase_auth
 import uuid
 import random
 import logging
+import threading
+import queue
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.conf import settings
@@ -76,33 +78,79 @@ def register_user(request):
     }
 
     # Intentar enviar correo
-    try:
-        logger.info(f'📧 Intentando enviar código OTP a {data["correo"]}')
-        logger.info(f'📧 Configuración email: HOST={settings.EMAIL_HOST}, FROM={settings.DEFAULT_FROM_EMAIL}')
-        
-        send_mail(
-            'Código de verificación',
-            f'Tu código es: {codigo}. Expira en 5 minutos.',
-            settings.DEFAULT_FROM_EMAIL,
-            [data['correo']],
-            fail_silently=False,
-        )
-        logger.info(f'✅ Correo enviado exitosamente a {data["correo"]}')
-    except Exception as e:
-        logger.error(f'❌ Error al enviar correo a {data["correo"]}: {str(e)}')
-        logger.error(f'❌ Tipo de error: {type(e).__name__}')
-        logger.error(f'❌ Detalles completos: {repr(e)}')
-        
-        # El usuario ya está creado, pero no se pudo enviar el correo
-        # Retornar error pero con información útil
-        error_msg = f'Usuario creado pero no se pudo enviar el correo de verificación. Error: {str(e)}'
+    email_sent = False
+    email_error = None
+    email_test_mode = getattr(settings, 'EMAIL_TEST_MODE', False)
+    
+    logger.info(f'📧 Intentando enviar código OTP a {data["correo"]}')
+    logger.info(f'📧 Configuración email: HOST={settings.EMAIL_HOST}, FROM={settings.DEFAULT_FROM_EMAIL}')
+    logger.info(f'📧 Modo prueba: {email_test_mode}')
+    logger.info(f'🔑 Código OTP generado: {codigo} (para pruebas/verificación manual)')
+    
+    # Si está en modo prueba, no intentar enviar correo real
+    if email_test_mode:
+        logger.warning(f'⚠️ MODO PRUEBA: No se enviará correo real. Código OTP: {codigo}')
+        email_sent = False  # Marcar como no enviado para que el frontend sepa
+    else:
+        # Intentar enviar correo real con timeout usando threading
+        try:
+            import threading
+            import queue
+            
+            result_queue = queue.Queue()
+            
+            def send_email_thread():
+                try:
+                    send_mail(
+                        'Código de verificación',
+                        f'Tu código es: {codigo}. Expira en 5 minutos.',
+                        settings.DEFAULT_FROM_EMAIL,
+                        [data['correo']],
+                        fail_silently=False,
+                    )
+                    result_queue.put(('success', None))
+                except Exception as e:
+                    result_queue.put(('error', e))
+            
+            # Iniciar thread para enviar correo
+            email_thread = threading.Thread(target=send_email_thread, daemon=True)
+            email_thread.start()
+            email_thread.join(timeout=10)  # Timeout de 10 segundos
+            
+            if email_thread.is_alive():
+                logger.error(f'⏱️ Timeout: El envío de correo tomó más de 10 segundos')
+                email_error = 'Timeout: El servidor de correo no respondió a tiempo'
+            else:
+                result_type, result_value = result_queue.get_nowait()
+                if result_type == 'success':
+                    email_sent = True
+                    logger.info(f'✅ Correo enviado exitosamente a {data["correo"]}')
+                else:
+                    email_error = str(result_value)
+                    logger.error(f'❌ Error al enviar correo: {email_error}')
+                    
+        except Exception as e:
+            email_error = str(e)
+            logger.error(f'❌ Error al enviar correo a {data["correo"]}: {email_error}')
+            logger.error(f'❌ Tipo de error: {type(e).__name__}')
+            logger.error(f'❌ Detalles completos: {repr(e)}')
+    
+    # Si el correo no se pudo enviar (o está en modo prueba), aún así retornar éxito
+    # pero indicar que el correo no se envió
+    if not email_sent:
+        logger.warning(f'⚠️ Usuario creado pero correo NO enviado. Código OTP: {codigo}')
         return JsonResponse({
-            'error': 'No se pudo enviar el correo de verificación',
-            'detalle': str(e),
-            'usuario_creado': True,
-            'tempToken': temp_token,  # Aún así proporcionar el token para que puedan intentar verificar
-            'mensaje': 'El usuario fue creado exitosamente, pero hubo un problema al enviar el correo. Por favor, contacta al administrador o intenta iniciar sesión y solicitar un nuevo código.'
-        }, status=500)
+            'mensaje': 'Usuario registrado con éxito',
+            'requires2fa': True,
+            'canal': 'email',
+            'destino': f"{data['correo'][:2]}***@{data['correo'].split('@')[1]}",
+            'tempToken': temp_token,
+            'email_enviado': False,
+            'codigo_otp': codigo if email_test_mode else None,  # Solo en modo prueba mostrar código
+            'advertencia': 'El correo no se pudo enviar. ' + 
+                          (f'Código OTP para pruebas: {codigo}' if email_test_mode else 
+                           'Contacta al administrador o revisa los logs del servidor.')
+        }, status=201)
 
     return JsonResponse({
         'mensaje': 'Usuario registrado con éxito',
@@ -195,23 +243,56 @@ def login_user(request):
             'expira': (datetime.datetime.now() + datetime.timedelta(minutes=5)).timestamp()
         }
 
-        try:
-            logger.info(f'📧 Intentando enviar código OTP de login a {usuario.email}')
-            send_mail(
-                'Código de verificación',
-                f'Tu código es: {codigo}. Expira en 5 minutos.',
-                settings.DEFAULT_FROM_EMAIL,
-                [usuario.email],
-                fail_silently=False,
-            )
-            logger.info(f'✅ Correo de login enviado exitosamente a {usuario.email}')
-        except Exception as e:
-            logger.error(f'❌ Error al enviar correo de login a {usuario.email}: {str(e)}')
-            logger.error(f'❌ Tipo de error: {type(e).__name__}')
-            return JsonResponse({
-                'error': 'No se pudo enviar el correo de verificación',
-                'detalle': str(e)
-            }, status=500)
+        email_test_mode = getattr(settings, 'EMAIL_TEST_MODE', False)
+        email_sent = False
+        email_error = None
+        
+        logger.info(f'📧 Intentando enviar código OTP de login a {usuario.email}')
+        logger.info(f'🔑 Código OTP generado: {codigo} (para pruebas/verificación manual)')
+        
+        if email_test_mode:
+            logger.warning(f'⚠️ MODO PRUEBA: No se enviará correo real. Código OTP: {codigo}')
+        else:
+            try:
+                result_queue = queue.Queue()
+                
+                def send_email_thread():
+                    try:
+                        send_mail(
+                            'Código de verificación',
+                            f'Tu código es: {codigo}. Expira en 5 minutos.',
+                            settings.DEFAULT_FROM_EMAIL,
+                            [usuario.email],
+                            fail_silently=False,
+                        )
+                        result_queue.put(('success', None))
+                    except Exception as e:
+                        result_queue.put(('error', e))
+                
+                email_thread = threading.Thread(target=send_email_thread, daemon=True)
+                email_thread.start()
+                email_thread.join(timeout=10)
+                
+                if email_thread.is_alive():
+                    logger.error(f'⏱️ Timeout: El envío de correo tomó más de 10 segundos')
+                    email_error = 'Timeout: El servidor de correo no respondió a tiempo'
+                else:
+                    result_type, result_value = result_queue.get_nowait()
+                    if result_type == 'success':
+                        email_sent = True
+                        logger.info(f'✅ Correo de login enviado exitosamente a {usuario.email}')
+                    else:
+                        email_error = str(result_value)
+                        logger.error(f'❌ Error al enviar correo de login: {email_error}')
+                        
+            except Exception as e:
+                email_error = str(e)
+                logger.error(f'❌ Error al enviar correo de login a {usuario.email}: {email_error}')
+        
+        # Si el correo no se pudo enviar, aún así permitir continuar con el 2FA
+        # El código está en la sesión, pueden verificarlo manualmente si es necesario
+        if not email_sent and not email_test_mode:
+            logger.warning(f'⚠️ Correo NO enviado pero continuando con 2FA. Código: {codigo}')
 
         return JsonResponse({
             'requires2fa': True,

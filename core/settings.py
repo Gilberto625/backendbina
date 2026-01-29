@@ -174,7 +174,14 @@ SENDGRID_API_KEY = config('SENDGRID_API_KEY', default=None)
 SENDGRID_FROM_EMAIL = config('SENDGRID_FROM_EMAIL', default=None)
 SENDGRID_FROM_NAME = config('SENDGRID_FROM_NAME', default='Stylo Barber')
 
-if SENDGRID_API_KEY:
+# Modo de prueba: no envía correos reales, solo los loguea
+EMAIL_TEST_MODE = config('EMAIL_TEST_MODE', default=False, cast=bool)
+
+if EMAIL_TEST_MODE:
+    # Modo de prueba: usar backend de consola que solo imprime
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    DEFAULT_FROM_EMAIL = SENDGRID_FROM_EMAIL or 'test@stylobarber.com'
+elif SENDGRID_API_KEY:
     # Usar SendGrid si está configurado
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.sendgrid.net'
