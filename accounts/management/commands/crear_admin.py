@@ -44,34 +44,22 @@ class Command(BaseCommand):
         nombre = options['nombre']
         apellido = options['apellido']
 
-        # Verificar si ya existe
-        if Usuario.objects.filter(email=email).exists():
-            usuario = Usuario.objects.get(email=email)
-            self.stdout.write(
-                self.style.WARNING(f'El usuario {email} ya existe.')
+        try:
+            # Buscar o crear usuario
+            usuario, created = Usuario.objects.get_or_create(
+                email=email,
+                defaults={
+                    'username': email.split('@')[0],
+                }
             )
             
-            # Actualizar rol a administrador y contraseña
-            usuario.rol = 'administrador'
-            usuario.is_staff = True
-            usuario.is_superuser = True
-            usuario.activo = True
-            usuario.verificado = False  # False para permitir login sin 2FA
+            if not created:
+                self.stdout.write(
+                    self.style.WARNING(f'🔄 Usuario {email} ya existe. Actualizando a administrador...')
+                )
+            
+            # Configurar TODOS los campos requeridos
             usuario.set_password(password)
-            usuario.save()
-            self.stdout.write(
-                self.style.SUCCESS(f'Usuario {email} actualizado a administrador.')
-            )
-            return
-
-        # Crear usuario administrador
-        try:
-            usuario = Usuario.objects.create_user(
-                username=email.split('@')[0],
-                email=email,
-                password=password,
-            )
-            # Configurar campos adicionales
             usuario.first_name = nombre
             usuario.last_name = apellido
             usuario.rol = 'administrador'
@@ -79,14 +67,19 @@ class Command(BaseCommand):
             usuario.is_superuser = True
             usuario.activo = True
             usuario.verificado = False  # False para permitir login sin 2FA
+            usuario.confirmado = False
+            usuario.intentos_fallidos = 0
+            usuario.inasistencias_consecutivas = 0
+            usuario.requiere_anticipo_obligatorio = False
+            usuario.citas_penalizadas_restantes = 0
             usuario.save()
             
             self.stdout.write(
-                self.style.SUCCESS(f'✅ Administrador creado exitosamente!')
+                self.style.SUCCESS(f'✅ Administrador {"creado" if created else "actualizado"} exitosamente!')
             )
             self.stdout.write(f'   Email: {email}')
             self.stdout.write(f'   Nombre: {nombre} {apellido}')
-            self.stdout.write(f'   Rol: administrador')
+            self.stdout.write(f'   Rol: {usuario.rol}')
             
         except Exception as e:
             self.stdout.write(
