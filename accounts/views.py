@@ -485,9 +485,11 @@ def recuperar_otp(request):
         usuario = Usuario.objects.get(email=email)
     except Usuario.DoesNotExist:
         # Por seguridad, no revelamos si el email existe o no
+        # Retornar respuesta exitosa pero sin tempToken (similar a registro cuando usuario existe)
         return JsonResponse({
             'ok': True,
-            'mensaje': 'Si el correo existe, se enviará un código de recuperación.'
+            'mensaje': 'Si el correo existe, se enviará un código de recuperación.',
+            'email_enviado': False
         })
 
     # Generar código OTP
