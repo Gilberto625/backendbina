@@ -106,6 +106,15 @@ if config('DATABASE_URL', default=None):
 
     }
 
+else:
+    # Desarrollo: SQLite local
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -174,6 +183,19 @@ EMAIL_HOST_USER = 'resend'  # Literal "resend", no cambiar
 EMAIL_HOST_PASSWORD = config('RESEND_API_KEY')  # Tu API Key de Resend
 DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'  # Email por defecto de Resend (gratis)
 
+# ============================================
+# CLOUDINARY - Almacenamiento de imágenes
+# ============================================
+import cloudinary
+import cloudinary.uploader
+
+cloudinary.config(
+    cloud_name=config('CLOUDINARY_CLOUD_NAME', default='djomhqrdv'),
+    api_key=config('CLOUDINARY_API_KEY', default='459254854168538'),
+    api_secret=config('CLOUDINARY_API_SECRET', default='F_NnAb6i5icJigpMtjVccTGFKuM'),
+    secure=True
+)
+
 # Configuración CORS para Angular Frontend
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
@@ -192,6 +214,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'x-user-email',  # Header para identificar usuario admin
 ]
 CORS_ALLOW_METHODS = [
     'DELETE',

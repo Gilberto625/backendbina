@@ -162,8 +162,9 @@ def login_user(request):
     if not usuario.check_password(password):
         return JsonResponse({'error': 'Credenciales inválidas'}, status=400)
 
-    # Si el usuario está verificado, requiere 2FA
-    if usuario.verificado:
+    # ADMIN: Login directo SIN 2FA
+    # CLIENTE: Si está verificado, requiere 2FA
+    if usuario.rol == 'cliente' and usuario.verificado:
         codigo = generar_codigo()
         temp_token = str(uuid.uuid4())
         request.session[temp_token] = {
@@ -191,7 +192,7 @@ def login_user(request):
             'destino': f"{email[:2]}***@{email.split('@')[1]}",
         })
 
-    # Si no está verificado, genera JWT (más adelante lo haremos)
+    # Admin o cliente no verificado: Login directo
     return JsonResponse({
         'ok': True,
         'mensaje': 'Inicio de sesión exitoso',
@@ -199,6 +200,9 @@ def login_user(request):
             'id': usuario.id,
             'email': usuario.email,
             'username': usuario.username,
+            'nombre': usuario.first_name,
+            'apellido': usuario.last_name,
+            'rol': usuario.rol,
         }
     })
 @csrf_exempt
@@ -246,7 +250,7 @@ def verificar_login_2fa(request):
     # Limpiar sesión
     del request.session[temp_token]
 
-    # Aquí generarías un JWT en el futuro
+    # Devolver datos del usuario con rol
     return JsonResponse({
         'ok': True,
         'mensaje': 'Inicio de sesión exitoso',
@@ -254,6 +258,9 @@ def verificar_login_2fa(request):
             'id': usuario.id,
             'email': usuario.email,
             'username': usuario.username,
+            'nombre': usuario.first_name,
+            'apellido': usuario.last_name,
+            'rol': usuario.rol,
         }
     })
 @csrf_exempt
@@ -293,6 +300,9 @@ def google_login(request):
                 'id': usuario.id,
                 'email': usuario.email,
                 'username': usuario.username,
+                'nombre': usuario.first_name,
+                'apellido': usuario.last_name,
+                'rol': usuario.rol,
             }
         })
 
