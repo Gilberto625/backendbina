@@ -619,13 +619,17 @@ def reenviar_otp_recuperacion(request):
 
     try:
         data = json.loads(request.body)
-        correo = data.get('correo')
+        correo = data.get('correo') or data.get('email')  # Aceptar ambos campos
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({'error': 'Datos inválidos'}, status=400)
 
     if not correo:
         return JsonResponse({'error': 'El correo es requerido'}, status=400)
 
+    # Crear un nuevo request body con 'email' para recuperar_otp
+    import json as json_module
+    request._body = json_module.dumps({'email': correo}).encode('utf-8')
+    
     # Llamar a recuperar_otp con el mismo email
     return recuperar_otp(request)
 
