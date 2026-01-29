@@ -462,6 +462,211 @@ def recuperar_contrasena(request):
     }
 
     return JsonResponse({'ok': True, 'tempToken': temp_token})
+
+@csrf_exempt
+def recuperar_otp(request):
+    """
+    Enviar código OTP por email para recuperación de contraseña
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        email = data.get('email')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+
+    if not email:
+        return JsonResponse({'error': 'El email es requerido'}, status=400)
+
+    # Verificar si el usuario existe
+    try:
+        usuario = Usuario.objects.get(email=email)
+    except Usuario.DoesNotExist:
+        # Por seguridad, no revelamos si el email existe o no
+        return JsonResponse({
+            'ok': True,
+            'mensaje': 'Si el correo existe, se enviará un código de recuperación.'
+        })
+
+    # Generar código OTP
+    codigo = generar_codigo()
+    temp_token = str(uuid.uuid4())
+    request.session[temp_token] = {
+        'email': usuario.email,
+        'codigo': codigo,
+        'tipo': 'recuperacion',
+        'intentos': 0,
+        'expira': (datetime.datetime.now() + datetime.timedelta(minutes=10)).timestamp()
+    }
+
+    email_test_mode = getattr(settings, 'EMAIL_TEST_MODE', False)
+    email_sent = False
+    email_error = None
+    
+    logger.info(f'📧 Intentando enviar código OTP de recuperación a {usuario.email}')
+    logger.info(f'🔑 Código OTP generado: {codigo} (para pruebas/verificación manual)')
+    
+    if email_test_mode:
+        logger.warning(f'⚠️ MODO PRUEBA: No se enviará correo real. Código OTP: {codigo}')
+    else:
+        try:
+            result_queue = queue.Queue()
+            
+            def send_email_thread():
+                try:
+                    send_mail(
+                        'Código de recuperación de contraseña',
+                        f'Tu código de recuperación es: {codigo}. Expira en 10 minutos.',
+                        settings.DEFAULT_FROM_EMAIL,
+                        [usuario.email],
+                        fail_silently=False,
+                    )
+                    result_queue.put(('success', None))
+                except Exception as e:
+                    result_queue.put(('error', e))
+            
+            email_thread = threading.Thread(target=send_email_thread, daemon=True)
+            email_thread.start()
+            email_thread.join(timeout=10)
+            
+            if email_thread.is_alive():
+                logger.error(f'⏱️ Timeout: El envío de correo tomó más de 10 segundos')
+                email_error = 'Timeout: El servidor de correo no respondió a tiempo'
+            else:
+                result = result_queue.get_nowait()
+                if result[0] == 'success':
+                    email_sent = True
+                    logger.info(f'✅ Correo enviado exitosamente a {usuario.email}')
+                else:
+                    email_error = str(result[1])
+                    logger.error(f'❌ Error al enviar correo: {email_error}')
+        except Exception as e:
+            email_error = str(e)
+            logger.error(f'❌ Error inesperado al enviar correo: {email_error}')
+
+    # Siempre retornar tempToken incluso si falla el email (para permitir pruebas)
+    response_data = {
+        'ok': True,
+        'tempToken': temp_token,
+        'email_enviado': email_sent
+    }
+    
+    if email_test_mode:
+        response_data['codigo_otp'] = codigo  # Solo en modo prueba
+    
+    if email_error:
+        response_data['error_email'] = email_error
+        logger.warning(f'⚠️ Usuario creado pero email falló: {email_error}')
+    
+    return JsonResponse(response_data)
+
+@csrf_exempt
+def verificar_otp_recuperacion(request):
+    """
+    Verificar código OTP para recuperación de contraseña
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        temp_token = data.get('tempToken')
+        codigo = data.get('codigo')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+
+    if not temp_token or not codigo:
+        return JsonResponse({'error': 'tempToken y codigo son requeridos'}, status=400)
+
+    session_data = request.session.get(temp_token)
+    if not session_data or session_data.get('tipo') != 'recuperacion':
+        return JsonResponse({'error': 'Token inválido o expirado'}, status=400)
+
+    # Verificar expiración
+    if datetime.datetime.now().timestamp() > session_data['expira']:
+        del request.session[temp_token]
+        return JsonResponse({'error': 'Token expirado'}, status=400)
+
+    # Verificar intentos
+    if session_data.get('intentos', 0) >= 3:
+        del request.session[temp_token]
+        return JsonResponse({'error': 'Demasiados intentos fallidos'}, status=400)
+
+    # Verificar código
+    if session_data.get('codigo') != codigo:
+        session_data['intentos'] = session_data.get('intentos', 0) + 1
+        request.session[temp_token] = session_data
+        return JsonResponse({'error': 'Código incorrecto'}, status=400)
+
+    # Código correcto - actualizar token para permitir cambio de contraseña
+    request.session[temp_token] = {
+        'email': session_data['email'],
+        'tipo': 'recuperacion_verificada',
+        'expira': (datetime.datetime.now() + datetime.timedelta(minutes=10)).timestamp()
+    }
+
+    return JsonResponse({'ok': True, 'mensaje': 'Código verificado correctamente'})
+
+@csrf_exempt
+def reenviar_otp_recuperacion(request):
+    """
+    Reenviar código OTP para recuperación de contraseña
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        correo = data.get('correo')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+
+    if not correo:
+        return JsonResponse({'error': 'El correo es requerido'}, status=400)
+
+    # Llamar a recuperar_otp con el mismo email
+    return recuperar_otp(request)
+
+@csrf_exempt
+def actualizar_contrasena_otp(request):
+    """
+    Actualizar contraseña después de verificar OTP de recuperación
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        temp_token = data.get('tempToken')
+        nueva_contrasena = data.get('nuevaContrasena')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Datos inválidos'}, status=400)
+
+    if not temp_token or not nueva_contrasena:
+        return JsonResponse({'error': 'tempToken y nuevaContrasena son requeridos'}, status=400)
+
+    session_data = request.session.get(temp_token)
+    if not session_data or session_data.get('tipo') != 'recuperacion_verificada':
+        return JsonResponse({'error': 'Token inválido o no verificado'}, status=400)
+
+    # Verificar expiración
+    if datetime.datetime.now().timestamp() > session_data['expira']:
+        del request.session[temp_token]
+        return JsonResponse({'error': 'Token expirado'}, status=400)
+
+    try:
+        usuario = Usuario.objects.get(email=session_data['email'])
+        usuario.set_password(nueva_contrasena)
+        usuario.save()
+    except Usuario.DoesNotExist:
+        return JsonResponse({'error': 'Usuario no encontrado'}, status=400)
+
+    # Limpiar sesión
+    del request.session[temp_token]
+
+    return JsonResponse({'ok': True, 'mensaje': 'Contraseña actualizada con éxito'})
 @csrf_exempt
 def restablecer_contrasena(request):
     if request.method != 'POST':

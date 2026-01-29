@@ -14,6 +14,10 @@ urlpatterns = [
     path('login/2fa/verificar/', views.verificar_login_2fa, name='verificar_login_2fa'),
     path('login/google/', views.google_login, name='google_login'),
     path('recuperar/', views.recuperar_contrasena, name='recuperar_contrasena'),
+    path('recuperar-otp/', views.recuperar_otp, name='recuperar_otp'),
+    path('verificar-otp-recuperacion/', views.verificar_otp_recuperacion, name='verificar_otp_recuperacion'),
+    path('reenviar-otp-recuperacion/', views.reenviar_otp_recuperacion, name='reenviar_otp_recuperacion'),
+    path('actualizar-contrasena-otp/', views.actualizar_contrasena_otp, name='actualizar_contrasena_otp'),
     path('restablecer/', views.restablecer_contrasena, name='restablecer_contrasena'),
     
     # ============================================
