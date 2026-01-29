@@ -51,30 +51,35 @@ class Command(BaseCommand):
                 self.style.WARNING(f'El usuario {email} ya existe.')
             )
             
-            # Actualizar rol a administrador si no lo es
-            if usuario.rol != 'administrador':
-                usuario.rol = 'administrador'
-                usuario.is_staff = True
-                usuario.is_superuser = True
-                usuario.save()
-                self.stdout.write(
-                    self.style.SUCCESS(f'Usuario {email} actualizado a administrador.')
-                )
+            # Actualizar rol a administrador y contraseña
+            usuario.rol = 'administrador'
+            usuario.is_staff = True
+            usuario.is_superuser = True
+            usuario.activo = True
+            usuario.verificado = False  # False para permitir login sin 2FA
+            usuario.set_password(password)
+            usuario.save()
+            self.stdout.write(
+                self.style.SUCCESS(f'Usuario {email} actualizado a administrador.')
+            )
             return
 
         # Crear usuario administrador
         try:
             usuario = Usuario.objects.create_user(
+                username=email.split('@')[0],
                 email=email,
                 password=password,
-                username=email.split('@')[0],
-                nombre=nombre,
-                apellidopaterno=apellido,
-                rol='administrador',
-                is_staff=True,
-                is_superuser=True,
-                activo=True,
             )
+            # Configurar campos adicionales
+            usuario.first_name = nombre
+            usuario.last_name = apellido
+            usuario.rol = 'administrador'
+            usuario.is_staff = True
+            usuario.is_superuser = True
+            usuario.activo = True
+            usuario.verificado = False  # False para permitir login sin 2FA
+            usuario.save()
             
             self.stdout.write(
                 self.style.SUCCESS(f'✅ Administrador creado exitosamente!')
