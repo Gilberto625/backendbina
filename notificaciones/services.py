@@ -19,6 +19,10 @@ def _get_firebase_messaging():
     """
     Obtiene el módulo de messaging de Firebase Admin SDK.
     Lo inicializa solo una vez (singleton).
+    
+    Prioridad de credenciales:
+    1. Variable de entorno FIREBASE_CREDENTIALS (JSON string)
+    2. Archivo config/firebase-service-account.json
     """
     global _firebase_messaging
     
@@ -33,6 +37,8 @@ def _get_firebase_messaging():
     try:
         import firebase_admin
         from firebase_admin import messaging, credentials
+        import os
+        import json
         
         # Verificar si Firebase ya está inicializado
         try:
@@ -40,14 +46,29 @@ def _get_firebase_messaging():
             logger.info("Firebase Admin ya estaba inicializado")
         except ValueError:
             # No está inicializado, inicializarlo
-            import os
-            cred_path = os.path.join(settings.BASE_DIR, 'config', 'firebase-service-account.json')
+            cred = None
             
-            if not os.path.exists(cred_path):
-                logger.error(f"Archivo de credenciales FCM no encontrado: {cred_path}")
+            # Opción 1: Variable de entorno FIREBASE_CREDENTIALS (JSON string)
+            firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
+            if firebase_creds_json:
+                try:
+                    creds_dict = json.loads(firebase_creds_json)
+                    cred = credentials.Certificate(creds_dict)
+                    logger.info("Firebase Admin inicializado desde variable FIREBASE_CREDENTIALS")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error al parsear FIREBASE_CREDENTIALS: {e}")
+            
+            # Opción 2: Archivo firebase-service-account.json
+            if cred is None:
+                cred_path = os.path.join(settings.BASE_DIR, 'config', 'firebase-service-account.json')
+                if os.path.exists(cred_path):
+                    cred = credentials.Certificate(cred_path)
+                    logger.info("Firebase Admin inicializado desde archivo firebase-service-account.json")
+            
+            if cred is None:
+                logger.error("No se encontraron credenciales de Firebase (ni variable FIREBASE_CREDENTIALS ni archivo)")
                 return None
             
-            cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
             logger.info("Firebase Admin inicializado correctamente para FCM")
         

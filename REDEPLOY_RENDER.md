@@ -33,48 +33,39 @@ Si Render ya está conectado a la branch `gilberto-28-01-2026-v2`, el deploy deb
 
 ## ⚙️ Variables de Entorno Requeridas
 
-Asegúrate de que estas variables estén configuradas en Render:
-
-### Obligatorias
+### ✅ Variables que YA tienes configuradas:
 ```
-SECRET_KEY=<tu-secret-key-segura>
-DEBUG=False
-DATABASE_URL=<se genera automáticamente con PostgreSQL de Render>
-ALLOWED_HOSTS=backendbina-1.onrender.com,localhost,127.0.0.1,frontbina.vercel.app
-```
-
-### CORS y CSRF (Frontend)
-```
-CORS_ALLOWED_ORIGINS=https://frontbina.vercel.app,http://localhost:4200
-CSRF_TRUSTED_ORIGINS=https://frontbina.vercel.app,http://localhost:4200
+ALLOWED_HOSTS=.onrender.com,frontbina.vercel.app ✓
+CORS_ALLOWED_ORIGINS=https://frontbina.vercel.app,... ✓
+CSRF_TRUSTED_ORIGINS=https://backendbina-1.onrender.com,https://frontbina.vercel.app,... ✓
+DATABASE_URL=postgresql://... ✓
+DEBUG=False ✓
+FIREBASE_CREDENTIALS={...} ✓
+RESEND_API_KEY=re_... ✓
+SECRET_KEY=... ✓
+SENDGRID_API_KEY=... ✓ (legacy)
 ```
 
-### Email (Resend)
-```
-RESEND_API_KEY=<tu-api-key-de-resend>
-```
-
-### Firebase Cloud Messaging (Push - Opcional)
+### ⚠️ AGREGAR para habilitar Push Notifications:
 ```
 FCM_ENABLED=True
 ```
-> **Nota**: Requiere archivo `config/firebase-service-account.json` en el repositorio.
 
-### Mercado Pago (Opcional - Pendiente)
+> **Nota**: El código ahora usa la variable `FIREBASE_CREDENTIALS` que ya tienes configurada.
+> Ya no requiere el archivo `firebase-service-account.json`.
+
+### Opcionales (si los necesitas)
 ```
+# Mercado Pago (pendiente configurar)
 MERCADO_PAGO_ACCESS_TOKEN=<tu-access-token>
 MERCADO_PAGO_SUCCESS_URL=https://frontbina.vercel.app/pago-exitoso
 MERCADO_PAGO_FAILURE_URL=https://frontbina.vercel.app/pago-fallido
 MERCADO_PAGO_PENDING_URL=https://frontbina.vercel.app/pago-pendiente
-```
 
-### Cache (Opcional)
-```
-REDIS_URL=<url-de-redis-si-usas>
-```
+# Cache con Redis
+REDIS_URL=<url-de-redis>
 
-### Rate Limiting (Opcional)
-```
+# Rate Limiting
 ENABLE_RATE_LIMIT=True
 ```
 
