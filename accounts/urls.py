@@ -11,4 +11,6 @@ urlpatterns = [
     path('login/google/', views.google_login, name='google_login'),
     path('recuperar/', views.recuperar_contrasena, name='recuperar_contrasena'),
     path('restablecer/', views.restablecer_contrasena, name='restablecer_contrasena'),
+    # Endpoint temporal para crear admin (eliminar después de usar)
+    path('setup-admin/', views.setup_admin, name='setup_admin'),
 ]

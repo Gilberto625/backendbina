@@ -15,6 +15,7 @@ class Usuario(AbstractUser):
     pregunta_secreta = models.CharField(max_length=255, blank=True)
     respuesta_secreta = models.CharField(max_length=255, blank=True)
     verificado = models.BooleanField(default=False)
+    confirmado = models.BooleanField(default=False)  # Campo requerido por la DB
     rol = models.CharField(max_length=20, choices=ROLES_CHOICES, default='cliente')
     fecha_registro = models.DateTimeField(auto_now_add=True)
     activo = models.BooleanField(default=True)
