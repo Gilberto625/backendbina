@@ -246,7 +246,11 @@ def verificar_login_2fa(request):
     # Limpiar sesión
     del request.session[temp_token]
 
-    # Aquí generarías un JWT en el futuro
+    # Iniciar sesión en Django para que request.user funcione
+    from django.contrib.auth import login
+    login(request, usuario)
+
+    # Retornar datos del usuario con información de rol
     return JsonResponse({
         'ok': True,
         'mensaje': 'Inicio de sesión exitoso',
@@ -254,6 +258,8 @@ def verificar_login_2fa(request):
             'id': usuario.id,
             'email': usuario.email,
             'username': usuario.username,
+            'rol': usuario.rol,
+            'rol_display': usuario.get_rol_display(),
         }
     })
 @csrf_exempt
@@ -286,6 +292,10 @@ def google_login(request):
             }
         )
 
+        # Iniciar sesión en Django para que request.user funcione
+        from django.contrib.auth import login
+        login(request, usuario)
+
         return JsonResponse({
             'ok': True,
             'mensaje': 'Inicio de sesión con Google exitoso',
@@ -293,6 +303,8 @@ def google_login(request):
                 'id': usuario.id,
                 'email': usuario.email,
                 'username': usuario.username,
+                'rol': usuario.rol,
+                'rol_display': usuario.get_rol_display(),
             }
         })
 

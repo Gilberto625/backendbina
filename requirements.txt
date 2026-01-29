@@ -18,3 +18,15 @@ whitenoise==6.6.0
 gunicorn==21.2.0
 
 resend==0.8.0
+
+# Mercado Pago SDK (opcional, para integración de pagos)
+# mercadopago==2.2.0
+
+# Rate limiting (opcional)
+django-ratelimit==4.1.0
+
+# Documentación API (opcional, instalar si se necesita)
+drf-yasg==1.21.7
+
+# Redis para cache en producción (opcional)
+# django-redis==5.4.0

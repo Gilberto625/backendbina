@@ -40,7 +40,15 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',  # Para Angular frontend
+    # Documentación API (descomentar después de instalar: pip install drf-yasg)
+    # 'drf_yasg',  # Descomentar para habilitar documentación Swagger/ReDoc
     'accounts',
+    'citas',
+    'productos',
+    'pagos',
+    'barberos',
+    'configuracion',
+    'notificaciones',
 ]
 
 MIDDLEWARE = [
@@ -51,9 +59,17 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.UsuarioAutenticadoMiddleware',  # Middleware personalizado
+    # Rate limiting: habilitar solo en producción
+    # 'core.middleware_rate_limit.RateLimitMiddleware',  # Descomentar en producción
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Habilitar rate limiting en producción si está configurado
+ENABLE_RATE_LIMIT = config('ENABLE_RATE_LIMIT', default=False, cast=bool)
+if ENABLE_RATE_LIMIT:
+    MIDDLEWARE.insert(-2, 'core.middleware_rate_limit.RateLimitMiddleware')
 
 ROOT_URLCONF = 'core.urls'
 
@@ -103,6 +119,22 @@ if config('DATABASE_URL', default=None):
             conn_health_checks=True,
 
         )
+
+    }
+
+else:
+
+    # Desarrollo: SQLite local
+
+    DATABASES = {
+
+        'default': {
+
+            'ENGINE': 'django.db.backends.sqlite3',
+
+            'NAME': BASE_DIR / 'db.sqlite3',
+
+        }
 
     }
 
@@ -171,13 +203,13 @@ EMAIL_HOST = 'smtp.resend.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'resend'  # Literal "resend", no cambiar
-EMAIL_HOST_PASSWORD = config('RESEND_API_KEY')  # Tu API Key de Resend
+EMAIL_HOST_PASSWORD = config('RESEND_API_KEY', default='')  # Tu API Key de Resend
 DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'  # Email por defecto de Resend (gratis)
 
 # Configuración CORS para Angular Frontend
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:4200,http://127.0.0.1:4200',
+    default='http://localhost:4200,http://127.0.0.1:4200,https://frontbina.vercel.app',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True  # Para permitir cookies/sesiones
@@ -204,7 +236,7 @@ CORS_ALLOW_METHODS = [
 # CSRF Settings para Angular
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='http://localhost:4200,http://127.0.0.1:4200',
+    default='http://localhost:4200,http://127.0.0.1:4200,https://frontbina.vercel.app',
     cast=Csv()
 )
 
@@ -219,6 +251,66 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SECURE = not DEBUG
 
 CSRF_COOKIE_HTTPONLY = False  # Angular necesita leer el token
+
+
+# ============================================
+# CONFIGURACIÓN DE PAGOS
+# ============================================
+
+# Mercado Pago
+MERCADO_PAGO_ACCESS_TOKEN = config('MERCADO_PAGO_ACCESS_TOKEN', default='')
+MERCADO_PAGO_SUCCESS_URL = config('MERCADO_PAGO_SUCCESS_URL', default='http://localhost:4200/pago-exitoso')
+MERCADO_PAGO_FAILURE_URL = config('MERCADO_PAGO_FAILURE_URL', default='http://localhost:4200/pago-fallido')
+MERCADO_PAGO_PENDING_URL = config('MERCADO_PAGO_PENDING_URL', default='http://localhost:4200/pago-pendiente')
+
+# NOTA: La integración bancaria específica está pendiente
+# hasta que se defina qué banco utilizará el negocio para recibir transferencias
+
+
+# ============================================
+# CONFIGURACIÓN DE NOTIFICACIONES
+# ============================================
+
+# Firebase Cloud Messaging (Push Notifications)
+# Habilitar con FCM_ENABLED=True en variables de entorno
+# Requiere archivo: config/firebase-service-account.json
+FCM_ENABLED = config('FCM_ENABLED', default=False, cast=bool)
+
+# Twilio (SMS) - Pendiente implementación
+# TWILIO_ACCOUNT_SID = config('TWILIO_ACCOUNT_SID', default='')
+# TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
+# TWILIO_PHONE_NUMBER = config('TWILIO_PHONE_NUMBER', default='')
+
+
+# ============================================
+# CONFIGURACIÓN DE CACHE
+# ============================================
+
+# Cache: Redis en producción, local en desarrollo
+REDIS_URL = config('REDIS_URL', default=None)
+
+if REDIS_URL:
+    # Producción: Redis
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
+    }
+else:
+    # Desarrollo: Cache local
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'unique-snowflake',
+        }
+    }
+
+# Tiempo de cache por defecto (en segundos)
+CACHE_TTL = config('CACHE_TTL', default=300, cast=int)  # 5 minutos por defecto
 
 
 

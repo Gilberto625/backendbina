@@ -15,6 +15,18 @@ services:
         fromDatabase:
           name: django-db
           property: connectionString
+      # Opcional: Redis para cache (crear Redis en Render y agregar REDIS_URL manualmente)
+      # - key: REDIS_URL
+      #   fromService:
+      #     type: redis
+      #     name: barberia-redis
+      #     property: connectionString
+      # Opcional: Habilitar rate limiting
+      # - key: ENABLE_RATE_LIMIT
+      #   value: "True"
+      # Opcional: Tiempo de cache (segundos)
+      # - key: CACHE_TTL
+      #   value: "300"
 databases:
   - name: django-db
     databaseName: django_production
