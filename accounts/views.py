@@ -396,3 +396,40 @@ def restablecer_contrasena(request):
     del request.session[temp_token]
 
     return JsonResponse({'ok': True, 'mensaje': 'Contraseña actualizada con éxito'})
+
+
+def usuario_actual(request):
+    """
+    Endpoint para obtener información del usuario actual autenticado.
+    Útil para verificar el rol y estado del usuario.
+    
+    GET /api/usuarios/me/
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    
+    if not request.user.is_authenticated:
+        return JsonResponse({
+            'autenticado': False,
+            'error': 'No hay sesión activa'
+        }, status=401)
+    
+    usuario = request.user
+    
+    return JsonResponse({
+        'autenticado': True,
+        'usuario': {
+            'id': usuario.id,
+            'email': usuario.email,
+            'username': usuario.username,
+            'first_name': usuario.first_name,
+            'last_name': usuario.last_name,
+            'rol': usuario.rol,
+            'rol_display': usuario.get_rol_display(),
+            'is_staff': usuario.is_staff,
+            'is_superuser': usuario.is_superuser,
+            'activo': usuario.activo,
+            'verificado': usuario.verificado,
+            'fecha_registro': usuario.fecha_registro.isoformat() if usuario.fecha_registro else None,
+        }
+    })

@@ -1,6 +1,14 @@
 # core/decorators.py
 """
 Decoradores para verificación de roles y permisos en endpoints
+
+Roles del sistema (según requerimientos):
+- cliente: Agenda citas, compra productos, recibe notificaciones
+- secretaria: Valida pagos, gestiona citas/productos, asigna barberos/sillas
+- barbero: Solo define tiempos de duración de servicios
+- administrador: Gestiona TODO (empleados, productos, stock, reglas, métricas)
+
+IMPORTANTE: El Administrador tiene acceso a TODAS las funciones del sistema
 """
 from functools import wraps
 from django.http import JsonResponse
@@ -39,13 +47,19 @@ def requiere_autenticacion(view_func):
     return _wrapped_view
 
 
-def requiere_rol(*roles_permitidos):
+def requiere_rol(*roles_permitidos, admin_siempre_accede=True):
     """
     Decorador que verifica que el usuario tenga uno de los roles especificados
     
+    Por defecto, el Administrador siempre tiene acceso (según requerimientos)
+    
     Uso:
-        @requiere_rol('administrador', 'secretaria')
+        @requiere_rol('secretaria')  # Secretaria Y Administrador pueden acceder
         def mi_vista(request):
+            ...
+            
+        @requiere_rol('cliente', admin_siempre_accede=False)  # SOLO cliente
+        def vista_exclusiva_cliente(request):
             ...
     """
     def decorator(view_func):
@@ -58,6 +72,11 @@ def requiere_rol(*roles_permitidos):
                     'error': 'Autenticación requerida',
                     'mensaje': 'Debes iniciar sesión para acceder a este recurso'
                 }, status=401)
+            
+            # El administrador siempre tiene acceso (a menos que se especifique lo contrario)
+            if admin_siempre_accede and usuario.rol == 'administrador':
+                request.usuario_autenticado = usuario
+                return view_func(request, *args, **kwargs)
             
             # Verificar que el usuario tenga uno de los roles permitidos
             if usuario.rol not in roles_permitidos:
@@ -75,24 +94,38 @@ def requiere_rol(*roles_permitidos):
 
 
 # Decoradores específicos para cada rol
+# NOTA: El Administrador siempre tiene acceso a TODAS las funciones
+
 def requiere_cliente(view_func):
-    """Decorador que verifica que el usuario sea Cliente"""
+    """
+    Decorador que verifica que el usuario sea Cliente
+    El Administrador también tiene acceso
+    """
     return requiere_rol('cliente')(view_func)
 
 
 def requiere_secretaria(view_func):
-    """Decorador que verifica que el usuario sea Secretaria"""
+    """
+    Decorador que verifica que el usuario sea Secretaria
+    El Administrador también tiene acceso
+    """
     return requiere_rol('secretaria')(view_func)
 
 
 def requiere_barbero(view_func):
-    """Decorador que verifica que el usuario sea Barbero"""
+    """
+    Decorador que verifica que el usuario sea Barbero
+    El Administrador también tiene acceso
+    """
     return requiere_rol('barbero')(view_func)
 
 
 def requiere_administrador(view_func):
-    """Decorador que verifica que el usuario sea Administrador"""
-    return requiere_rol('administrador')(view_func)
+    """
+    Decorador que verifica que el usuario sea Administrador
+    SOLO el Administrador tiene acceso
+    """
+    return requiere_rol('administrador', admin_siempre_accede=False)(view_func)
 
 
 def requiere_staff(view_func):

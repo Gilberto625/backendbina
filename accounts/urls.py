@@ -11,4 +11,6 @@ urlpatterns = [
     path('login/google/', views.google_login, name='google_login'),
     path('recuperar/', views.recuperar_contrasena, name='recuperar_contrasena'),
     path('restablecer/', views.restablecer_contrasena, name='restablecer_contrasena'),
+    # Endpoint para verificar usuario actual (útil para debug)
+    path('me/', views.usuario_actual, name='usuario_actual'),
 ]
