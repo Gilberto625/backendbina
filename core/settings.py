@@ -167,21 +167,31 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'accounts.Usuario'
 
 # Configuración de Email (usando variables de entorno)
-#EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-#EMAIL_HOST = 'smtp.gmail.com'
-#EMAIL_PORT = 465
-#EMAIL_USE_SSL = True
-#EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='joadanvidal@gmail.com')
-#EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='pkpukuqtvxbqqkvf')
-#DEFAULT_FROM_EMAIL = EMAIL_HOST_USER# Configuración de Email con Resend
+# Prioridad: SendGrid > Resend
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.resend.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'resend'  # Literal "resend", no cambiar
-EMAIL_HOST_PASSWORD = config('RESEND_API_KEY')  # Tu API Key de Resend
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'  # Email por defecto de Resend (gratis)
+# Verificar si SendGrid está configurado
+SENDGRID_API_KEY = config('SENDGRID_API_KEY', default=None)
+SENDGRID_FROM_EMAIL = config('SENDGRID_FROM_EMAIL', default=None)
+SENDGRID_FROM_NAME = config('SENDGRID_FROM_NAME', default='Stylo Barber')
+
+if SENDGRID_API_KEY:
+    # Usar SendGrid si está configurado
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.sendgrid.net'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = 'apikey'  # Literal "apikey" para SendGrid
+    EMAIL_HOST_PASSWORD = SENDGRID_API_KEY
+    DEFAULT_FROM_EMAIL = SENDGRID_FROM_EMAIL or 'noreply@stylobarber.com'
+else:
+    # Fallback a Resend
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.resend.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = 'resend'  # Literal "resend", no cambiar
+    EMAIL_HOST_PASSWORD = config('RESEND_API_KEY', default='')  # Tu API Key de Resend
+    DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'  # Email por defecto de Resend (gratis)
 
 # ============================================
 # CLOUDINARY - Almacenamiento de imágenes
@@ -236,6 +246,44 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SECURE = not DEBUG  # True en producción
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_AGE = 86400  # 24 horas
+
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'accounts': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
 
 # CSRF Cookie Settings
 CSRF_COOKIE_SAMESITE = 'Lax'

@@ -2,6 +2,7 @@
 from firebase_admin import auth as firebase_auth
 import uuid
 import random
+import logging
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.conf import settings
@@ -11,6 +12,8 @@ from django.middleware.csrf import get_token
 import json
 import datetime
 from django.contrib.auth.hashers import check_password
+
+logger = logging.getLogger(__name__)
 Usuario = get_user_model()
 
 def generar_codigo():
@@ -72,7 +75,11 @@ def register_user(request):
         'expira': (datetime.datetime.now() + datetime.timedelta(minutes=5)).timestamp()
     }
 
+    # Intentar enviar correo
     try:
+        logger.info(f'📧 Intentando enviar código OTP a {data["correo"]}')
+        logger.info(f'📧 Configuración email: HOST={settings.EMAIL_HOST}, FROM={settings.DEFAULT_FROM_EMAIL}')
+        
         send_mail(
             'Código de verificación',
             f'Tu código es: {codigo}. Expira en 5 minutos.',
@@ -80,8 +87,22 @@ def register_user(request):
             [data['correo']],
             fail_silently=False,
         )
+        logger.info(f'✅ Correo enviado exitosamente a {data["correo"]}')
     except Exception as e:
-        return JsonResponse({'error': 'No se pudo enviar el correo'}, status=500)
+        logger.error(f'❌ Error al enviar correo a {data["correo"]}: {str(e)}')
+        logger.error(f'❌ Tipo de error: {type(e).__name__}')
+        logger.error(f'❌ Detalles completos: {repr(e)}')
+        
+        # El usuario ya está creado, pero no se pudo enviar el correo
+        # Retornar error pero con información útil
+        error_msg = f'Usuario creado pero no se pudo enviar el correo de verificación. Error: {str(e)}'
+        return JsonResponse({
+            'error': 'No se pudo enviar el correo de verificación',
+            'detalle': str(e),
+            'usuario_creado': True,
+            'tempToken': temp_token,  # Aún así proporcionar el token para que puedan intentar verificar
+            'mensaje': 'El usuario fue creado exitosamente, pero hubo un problema al enviar el correo. Por favor, contacta al administrador o intenta iniciar sesión y solicitar un nuevo código.'
+        }, status=500)
 
     return JsonResponse({
         'mensaje': 'Usuario registrado con éxito',
@@ -175,6 +196,7 @@ def login_user(request):
         }
 
         try:
+            logger.info(f'📧 Intentando enviar código OTP de login a {usuario.email}')
             send_mail(
                 'Código de verificación',
                 f'Tu código es: {codigo}. Expira en 5 minutos.',
@@ -182,8 +204,14 @@ def login_user(request):
                 [usuario.email],
                 fail_silently=False,
             )
-        except Exception:
-            return JsonResponse({'error': 'No se pudo enviar el correo'}, status=500)
+            logger.info(f'✅ Correo de login enviado exitosamente a {usuario.email}')
+        except Exception as e:
+            logger.error(f'❌ Error al enviar correo de login a {usuario.email}: {str(e)}')
+            logger.error(f'❌ Tipo de error: {type(e).__name__}')
+            return JsonResponse({
+                'error': 'No se pudo enviar el correo de verificación',
+                'detalle': str(e)
+            }, status=500)
 
         return JsonResponse({
             'requires2fa': True,
