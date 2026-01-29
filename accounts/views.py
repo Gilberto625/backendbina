@@ -191,7 +191,10 @@ def login_user(request):
             'destino': f"{email[:2]}***@{email.split('@')[1]}",
         })
 
-    # Si no está verificado, genera JWT (más adelante lo haremos)
+    # Si no está verificado, login directo (sin 2FA)
+    from django.contrib.auth import login
+    login(request, usuario)
+    
     return JsonResponse({
         'ok': True,
         'mensaje': 'Inicio de sesión exitoso',
@@ -199,6 +202,9 @@ def login_user(request):
             'id': usuario.id,
             'email': usuario.email,
             'username': usuario.username,
+            'rol': usuario.rol,
+            'first_name': usuario.first_name,
+            'last_name': usuario.last_name,
         }
     })
 @csrf_exempt
