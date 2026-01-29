@@ -15,7 +15,8 @@ class Usuario(AbstractUser):
     pregunta_secreta = models.CharField(max_length=255, blank=True)
     respuesta_secreta = models.CharField(max_length=255, blank=True)
     verificado = models.BooleanField(default=False)
-    confirmado = models.BooleanField(default=False)  # Campo requerido por la DB
+    confirmado = models.BooleanField(default=False)
+    intentos_fallidos = models.IntegerField(default=0)  # Intentos de login fallidos
     rol = models.CharField(max_length=20, choices=ROLES_CHOICES, default='cliente')
     fecha_registro = models.DateTimeField(auto_now_add=True)
     activo = models.BooleanField(default=True)
